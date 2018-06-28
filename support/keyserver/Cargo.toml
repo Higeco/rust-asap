@@ -1,0 +1,8 @@
+[package]
+name = "keyserver"
+version = "0.1.0"
+authors = ["acheronfail <acheronfail@gmail.com>"]
+
+[dependencies]
+rocket = "0.3.14"
+rocket_codegen = "0.3.14"
