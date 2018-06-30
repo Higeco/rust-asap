@@ -2,6 +2,8 @@ use std::io::Read;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 use serde::de::DeserializeOwned;
+use serde::ser::Serialize;
+use serde_json::value::{to_value, Value};
 use jwt;
 use reqwest;
 use failure::Error;
@@ -9,11 +11,11 @@ use errors::ResultExt;
 
 /// The duration of how long the validator should cache public keys fetched
 /// from the keyserver. Defaults to 10 minutes.
-const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(600);
+pub const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(600);
 
-/// The types of errors a Validator may encounter.
+// The types of errors a Validator may encounter.
 #[derive(Fail, Debug)]
-pub enum ValidatorError {
+enum ValidatorError {
     #[fail(display = "JWT header did not contain a valid `kid`: {:?}", _0)]
     InvalidKID(jwt::Header),
 
@@ -24,7 +26,7 @@ pub enum ValidatorError {
     KeyserverError,
 
     #[fail(display = "Expired item: {:?}", _0)]
-    ExpiredCache(String),
+    ExpiredCache(String)
 }
 
 /// Options used to configure an ASAP Validator.
@@ -34,56 +36,144 @@ pub struct ValidatorOptions {
     /// The fallback keyserver URL. Must have a trailing "/".
     pub fallback_keyserver_url: String,
 
-    // ??? check spec that this is what it actually is...
-    /// ...
-    pub audience: String,
+    /// If it contains a value, the validation will check that the `aud` field is
+    /// the same as the one provided and will error otherwise.
+    /// Since `aud` can be either a String or a Vec in the JWT spec, you must use
+    /// the `ValidatorOptions::audience()` fn to generate one.
+    ///
+    /// ```rust
+    /// use asap::validator::ValidatorOptions;
+    ///
+    /// let mut opts = ValidatorOptions /* ... */
+    /// # {
+    /// #    keyserver_url: String::from("http://keyserver/"),
+    /// #    fallback_keyserver_url: String::from("http://keyserver/"),
+    /// #    aud: None,
+    /// #    iss: None,
+    /// #    sub: None,
+    /// #    cache_duration: None
+    /// # };
+    /// opts.aud = ValidatorOptions::audience(&"me"); // string
+    /// opts.aud = ValidatorOptions::audience(&["me", "you"]); // array of strings
+    /// ```
+    pub aud: Option<Value>,
+    /// If it contains a value, the validation will check that the `iss` field is
+    /// the same as the one provided and will error otherwise.
+    pub iss: Option<String>,
+    /// If it contains a value, the validation will check that the `sub` field is
+    /// the same as the one provided and will error otherwise.
+    pub sub: Option<String>,
 
     /// The duration of how long the validator should cache public keys fetched
     /// from the keyserver. Defaults to 10 minutes.
     pub cache_duration: Option<Duration>
 }
 
+impl ValidatorOptions {
+    /// Helper method to easily generate the audience options for ValidatorOptions.
+    /// Since the `aud` may be either a string or vec, use this when setting it.
+    ///
+    /// ```rust
+    /// use asap::validator::ValidatorOptions;
+    ///
+    /// // Set to a string:
+    /// let mut opts = ValidatorOptions {
+    ///     aud: ValidatorOptions::audience(&"me"),
+    ///     // other fields...
+    /// #    keyserver_url: String::from("http://keyserver/"),
+    /// #    fallback_keyserver_url: String::from("http://keyserver/"),
+    /// #    iss: None,
+    /// #    sub: None,
+    /// #    cache_duration: None
+    /// };
+    ///
+    /// // Set to an array of strings:
+    /// let mut opts = ValidatorOptions {
+    ///     aud: ValidatorOptions::audience(&["me", "you"]),
+    ///     // other fields...
+    /// #    keyserver_url: String::from("http://keyserver/"),
+    /// #    fallback_keyserver_url: String::from("http://keyserver/"),
+    /// #    iss: None,
+    /// #    sub: None,
+    /// #    cache_duration: None
+    /// };
+    /// ```
+    pub fn audience<T: Serialize>(audience: &T) -> Option<Value> {
+        Some(to_value(audience).unwrap())
+    }
+}
+
 /// An ASAP Validator.
 ///
-/// TODO: usage examples
+/// ```rust
+/// # extern crate asap;
+/// # extern crate serde;
+/// # #[macro_use] extern crate serde_derive;
+/// # use asap::validator::{Validator, ValidatorOptions};
+/// # use serde::de::DeserializeOwned;
+/// #
+/// // Construct the ASAP validator:
+/// let mut validator = Validator::new(ValidatorOptions {
+///     // If you pass the `aud`, `iss` and `sub` fields then they will be verified
+///     // with the token as well.
+///     aud: ValidatorOptions::audience(&"aud"),
+///     iss: Some(String::from("iss")),
+///     sub: Some(String::from("sub")),
+///     // Your keyserver URLs:
+///     keyserver_url: String::from("http://my-keyserver/"),
+///     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
+///     // How long should the Validator keep public keys in the cache?
+///     cache_duration: None
+/// });
+///
+/// // Your expected jwt claims:
+/// #[derive(Debug, Serialize, Deserialize, PartialEq)]
+/// struct MyClaims {
+///     iss: String,
+///     sub: String,
+///     aud: String,
+/// }
+///
+/// let asap_token = "<your-token-here>".to_string();
+///
+/// match validator.validate::<MyClaims>(asap_token) {
+///     Ok(token_data) => println!("claims {:?}", token_data.claims),
+///     Err(e) => eprintln!("{:?}", e)
+/// }
+/// ```
 pub struct Validator {
+    /// The actual jwt validator (from `jsonwebtoken` crate).
+    jwt_validator: jwt::Validation,
     /// The keyserver URL. Must have a trailing "/".
     keyserver_url: String,
     /// The fallback keyserver URL. Must have a trailing "/".
     fallback_keyserver_url: String,
-
-    // ??? check spec that this is what it actually is...
-    /// ...
-    audience: String,
-
     /// A hash-map used for simple key-caching.
     cache: HashMap<String, (SystemTime, Vec<u8>)>,
-    /// The time each cached key is used before being fetched again.
+    /// The time each cached key is used saved before being fetched again.
     cache_duration: Duration
 }
 
 impl Validator {
     /// Creates a new ASAP Validator from the passed options.
-    ///
-    /// TODO: usage examples
-    pub fn new(options: ValidatorOptions) -> Validator {
+    pub fn new(opts: ValidatorOptions) -> Validator {
+        let mut jwt_validator = jwt::Validation::new(jwt::Algorithm::RS256);
+        jwt_validator.set_audience(&opts.aud);
+        jwt_validator.iss = opts.iss;
+        jwt_validator.sub = opts.sub;
+
         Validator {
-            audience: options.audience,
-            keyserver_url: options.keyserver_url,
-            fallback_keyserver_url: options.fallback_keyserver_url,
+            jwt_validator: jwt_validator,
+            keyserver_url: opts.keyserver_url,
+            fallback_keyserver_url: opts.fallback_keyserver_url,
             cache: HashMap::new(),
-            cache_duration: options.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION)
+            cache_duration: opts.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION)
         }
     }
 
-    /// ...
+    // Decode the given token with the given public key.
     fn decode_token<'a, T: DeserializeOwned>(&self, token: &'a str, public_key: &Vec<u8>) -> Result<jwt::TokenData<T>, Error> {
-        // Decode the token (with audience).
-        // NOTE: validation can support an array here, add that
-        let mut validation = jwt::Validation::new(jwt::Algorithm::RS256);
-        validation.set_audience(&self.audience);
-
-        let token_data = jwt::decode::<T>(token, public_key, &validation).sync()?;
+        let token_data = jwt::decode::<T>(token, public_key, &self.jwt_validator).sync()?;
         Ok(token_data)
     }
 
@@ -113,9 +203,43 @@ impl Validator {
         Err(ValidatorError::KeyserverError.into())
     }
 
-    /// Validates the given token.
+    /// Validates the given token, returning both the claims and the header.
     ///
-    /// TODO: usage examples
+    /// ```rust
+    /// # extern crate asap;
+    /// # extern crate serde;
+    /// # #[macro_use] extern crate serde_derive;
+    /// # use asap::validator::{Validator, ValidatorOptions};
+    /// # use serde::de::DeserializeOwned;
+    /// #
+    /// # // Construct the ASAP validator:
+    /// # let mut validator = Validator::new(ValidatorOptions {
+    /// #     aud: ValidatorOptions::audience(&"aud"),
+    /// #     iss: Some(String::from("iss")),
+    /// #     sub: Some(String::from("sub")),
+    /// #     keyserver_url: String::from("http://my-keyserver/"),
+    /// #     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
+    /// #     cache_duration: None
+    /// # });
+    /// #
+    /// # // Your expected jwt claims:
+    /// # #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    /// # struct MyClaims {
+    /// #     iss: String,
+    /// #     sub: String,
+    /// #     aud: String,
+    /// # }
+    /// #
+    /// let asap_token = "<your-token-here>".to_string();
+    ///
+    /// match validator.validate::<MyClaims>(asap_token) {
+    ///     Ok(token_data) => {
+    ///         println!("claims {:?}", token_data.claims);
+    ///         println!("header {:?}", token_data.header);
+    ///     },
+    ///     Err(e) => eprintln!("{:?}", e)
+    /// }
+    /// ```
     pub fn validate<T: DeserializeOwned>(&mut self, token: String) -> Result<jwt::TokenData<T>, Error> {
         // First, decode the header to get the `kid`.
         let header = jwt::decode_header(&token).sync()?;

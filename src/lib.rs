@@ -1,7 +1,14 @@
-// TODO: get env vars (ASAP_KEYSERVER, etc, etc)
-// TODO: support Array of audiences in claims
+//! This is the ASAP crate.
+//!
+//! TODO: review ASAP spec and ensure this is compliant:
+//! [ASAP Specification](https://s2sauth.bitbucket.io/spec/)
+//!
+//! TODO: add general example here?
+
+// TODO: create generator and validator from env (ASAP_KEYSERVER, etc, etc)
 
 extern crate serde;
+extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 extern crate jsonwebtoken as jwt;
 extern crate reqwest;
@@ -9,7 +16,7 @@ extern crate reqwest;
 extern crate failure;
 #[macro_use] extern crate failure_derive;
 
-pub mod errors;
+mod errors;
 pub mod generator;
 pub mod validator;
 #[cfg(test)] mod tests;

@@ -17,8 +17,6 @@ const KS_URL: &'static str = "http://localhost:8000/";
 
 // A simple `Claims` struct. At the least this must include the `iss`, `sub` and
 // `aud` fields, but you can add extra claims to it as well.
-//
-// TODO: support claims array of audiences?
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Claims {
     iss: String,
@@ -44,7 +42,9 @@ impl Default for Claims {
 impl Default for ValidatorOptions {
     fn default() -> ValidatorOptions {
         ValidatorOptions {
-            audience: String::from("aud"),
+            aud: ValidatorOptions::audience(&"aud"),
+            iss: Some(String::from("iss")),
+            sub: Some(String::from("sub")),
             keyserver_url: String::from(KS_URL),
             fallback_keyserver_url: String::from(KS_URL),
             cache_duration: None
@@ -192,7 +192,7 @@ fn it_fails_with_incorrect_audience() {
     let claims = Claims::default();
     let mut validator_options = ValidatorOptions::default();
     // A different audience to the token's audience.
-    validator_options.audience = String::from("not-your-audience");
+    validator_options.aud = ValidatorOptions::audience(&"someone-else");
 
     let generator = Generator::default();
     let mut validator = Validator::new(validator_options);
