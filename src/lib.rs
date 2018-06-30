@@ -6,6 +6,9 @@
 //! TODO: add general example here?
 
 // TODO: create generator and validator from env (ASAP_KEYSERVER, etc, etc)
+// TODO: add configurable `leeway` option for validator
+// TODO: test extra claims are verified: exp, nbf, iat
+//  --> potentially put this functionality into the Generator
 
 extern crate serde;
 extern crate serde_json;

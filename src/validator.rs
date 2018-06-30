@@ -204,6 +204,8 @@ impl Validator {
     }
 
     /// Validates the given token, returning both the claims and the header.
+    /// The validator validates automatically the `iat`, `exp` and `nbf` claims
+    /// if present in the claims.
     ///
     /// ```rust
     /// # extern crate asap;

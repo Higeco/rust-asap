@@ -71,7 +71,7 @@ fn gen_token(generator: &Generator, claims: &Claims) -> String {
     match generator.generate(claims) {
         Ok(token) => token,
         Err(e) => {
-            println!("Error generating token: {}", e);
+            eprintln!("Error generating token: {}", e);
             panic!(e);
         }
     }
@@ -83,7 +83,7 @@ fn val_token<T: DeserializeOwned>(validator: &mut Validator, token: String) -> j
     match validator.validate(token) {
         Ok(token_data) => token_data,
         Err(e) => {
-            println!("Error validating token: {}", e);
+            eprintln!("Error validating token: {}", e);
             panic!(e);
         }
     }
