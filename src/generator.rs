@@ -1,7 +1,7 @@
 use jwt;
 use serde::ser::Serialize;
-use failure::Error;
 use errors::ResultExt;
+use failure::Error;
 
 /// ...
 // options

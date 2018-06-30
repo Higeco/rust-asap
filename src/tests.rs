@@ -7,9 +7,11 @@ use std::time::Duration;
 use serde::de::DeserializeOwned;
 
 // A private key to use to sign the tokens.
-const PRIVATE_KEY: &[u8] = include_bytes!("../support/keys/private_key.der");
+const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/01-private.der");
+const PRIVATE_KEY_02: &[u8] = include_bytes!("../support/keys/02-private.der");
 // The path of the public key in the keyserver.
-const KID: &'static str = "public_key.der";
+const KID_01: &'static str = "01-public.der";
+const KID_02: &'static str = "02-public.der";
 // The URL of our test keyserver.
 const KS_URL: &'static str = "http://localhost:8000/";
 
@@ -53,8 +55,8 @@ impl Default for ValidatorOptions {
 impl<'a> Default for Generator<'a> {
     fn default() -> Generator<'a> {
         Generator {
-            kid: String::from(KID),
-            private_key: PRIVATE_KEY
+            kid: String::from(KID_01),
+            private_key: PRIVATE_KEY_01
         }
     }
 }
@@ -92,11 +94,11 @@ fn val_token<T: DeserializeOwned>(validator: &mut Validator, token: String) -> j
  */
 
 fn ks_reset() {
-    let _ = reqwest::get("http://localhost:8000/reset");
+    let _ = reqwest::get(&format!("{}reset", KS_URL));
 }
 
 fn ks_count() -> String {
-    reqwest::get("http://localhost:8000/count").unwrap().text().unwrap()
+    reqwest::get(&format!("{}count", KS_URL)).unwrap().text().unwrap()
 }
 
 /**
@@ -108,10 +110,6 @@ fn ks_count() -> String {
  * TODO: Surely, there's a better way to do this/run them in parallel.
  */
 
-// TODO: test incorrect kid
-// TODO: test incorrect keys
-// TODO: test incorrect signature
-
 #[test]
 fn keyserver_works() {
     // Count should start at 0.
@@ -120,7 +118,7 @@ fn keyserver_works() {
 
     // Make 100 requests.
     for _ in 0..100 {
-        let _ = reqwest::get("http://localhost:8000/public_key.der");
+        let _ = reqwest::get(&format!("{}{}", KS_URL, KID_01));
     }
     assert_eq!(ks_count(), "100");
 
@@ -139,6 +137,54 @@ fn it_works() {
 
     let token_data = val_token(&mut validator, gen_token(&generator, &claims));
     assert_eq!(claims, token_data.claims);
+}
+
+#[test]
+fn it_fails_with_wrong_public_key() {
+    let claims = Claims::default();
+    let validator_options = ValidatorOptions::default();
+
+    let mut generator = Generator::default();
+    // Give the wrong `kid` for the `private_key` used.
+    generator.kid = String::from(KID_02);
+    let mut validator = Validator::new(validator_options);
+
+    match validator.validate::<Claims>(gen_token(&generator, &claims)) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!(format!("{}", e), "Invalid signature")
+    }
+}
+
+#[test]
+fn it_fails_with_wrong_private_key() {
+    let claims = Claims::default();
+    let validator_options = ValidatorOptions::default();
+
+    let mut generator = Generator::default();
+    // Give the wrong `private_key` for the `kid` used.
+    generator.private_key = PRIVATE_KEY_02;
+    let mut validator = Validator::new(validator_options);
+
+    match validator.validate::<Claims>(gen_token(&generator, &claims)) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!(format!("{}", e), "Invalid signature")
+    }
+}
+
+#[test]
+fn it_fails_with_no_public_key() {
+    let claims = Claims::default();
+    let validator_options = ValidatorOptions::default();
+
+    let mut generator = Generator::default();
+    // Give the wrong `kid` for the private key used.
+    generator.kid = String::from("not-a-kid");
+    let mut validator = Validator::new(validator_options);
+
+    match validator.validate::<Claims>(gen_token(&generator, &claims)) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!(format!("{}", e), "Failed to retrieve public key from keyserver")
+    }
 }
 
 #[test]
@@ -182,7 +228,7 @@ fn it_fetches_key_from_cache() {
     let generator = Generator::default();
     let mut validator = Validator::new(validator_options);
 
-    // Requesting the same `kid` twice should only result in 1 request.
+    // Requesting the same `kid_01` twice should only result in 1 request.
     let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims));
     assert_eq!(ks_count(), "1");
     let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims));
@@ -202,7 +248,7 @@ fn it_does_not_fetch_expired_key_from_cache() {
     let generator = Generator::default();
     let mut validator = Validator::new(validator_options);
 
-    // The expired `kid` should be requested again = 2 requests.
+    // The expired `kid_01` should be requested again = 2 requests.
     let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims));
     assert_eq!(ks_count(), "1");
     let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims));

@@ -14,13 +14,16 @@ const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(600);
 /// The types of errors a Validator may encounter.
 #[derive(Fail, Debug)]
 pub enum ValidatorError {
-    #[fail(display = "JWT header did not contain a valid `kid`: {:?}.", _0)]
+    #[fail(display = "JWT header did not contain a valid `kid`: {:?}", _0)]
     InvalidKID(jwt::Header),
 
-    #[fail(display = "Received `None` when fetching from cache.")]
+    #[fail(display = "Received `None` when fetching from cache")]
     CacheError,
 
-    #[fail(display = "Expired item: {:?}.", _0)]
+    #[fail(display = "Failed to retrieve public key from keyserver")]
+    KeyserverError,
+
+    #[fail(display = "Expired item: {:?}", _0)]
     ExpiredCache(String),
 }
 
@@ -41,6 +44,8 @@ pub struct ValidatorOptions {
 }
 
 /// An ASAP Validator.
+///
+/// TODO: usage examples
 pub struct Validator {
     /// The keyserver URL. Must have a trailing "/".
     keyserver_url: String,
@@ -59,6 +64,8 @@ pub struct Validator {
 
 impl Validator {
     /// Creates a new ASAP Validator from the passed options.
+    ///
+    /// TODO: usage examples
     pub fn new(options: ValidatorOptions) -> Validator {
         Validator {
             audience: options.audience,
@@ -80,7 +87,7 @@ impl Validator {
         Ok(token_data)
     }
 
-    /// ...
+    // Attempt to fetch the public key from cache and use that to decode the token.
     fn from_cache<'a, T: DeserializeOwned>(&mut self, kid: &'a str, token: &'a str) -> Result<jwt::TokenData<T>, Error> {
         if let Some((when, public_key)) = self.cache.get(kid) {
             let time_since = when.elapsed()?;
@@ -94,7 +101,21 @@ impl Validator {
         Err(ValidatorError::CacheError.into())
     }
 
-    /// ...
+    // Fetch the public key by returning the response body of: `GET <server_url><kid>`.
+    fn fetch_key<'a>(&self, server_url: &'a str, kid: &'a str) -> Result<Vec<u8>, Error> {
+        let mut response = reqwest::get(&format!("{}{}", server_url, kid))?;
+        if response.status().is_success() {
+            let mut public_key = Vec::new();
+            response.read_to_end(&mut public_key)?;
+            return Ok(public_key);
+        }
+
+        Err(ValidatorError::KeyserverError.into())
+    }
+
+    /// Validates the given token.
+    ///
+    /// TODO: usage examples
     pub fn validate<T: DeserializeOwned>(&mut self, token: String) -> Result<jwt::TokenData<T>, Error> {
         // First, decode the header to get the `kid`.
         let header = jwt::decode_header(&token).sync()?;
@@ -108,25 +129,22 @@ impl Validator {
                     if cached.is_ok() {
                         return cached;
                     }
-                    eprintln!("Error fetching from cache, reason: {:?}. Trying keyserver...", cached.err().unwrap());
+                    eprintln!("Error fetching from cache, reason: {}. Trying keyserver...", cached.err().unwrap());
                 }
-                // If there was any error fetching the key from the cache, just delete it.
+                // If there was any error fetching the key from the cache, just remove the entry.
                 self.cache.remove(&kid);
             }
 
             // Otherwise, fetch the public key from the keyserver(s).
-            let mut get_result = reqwest::get(&format!("{}{}", self.keyserver_url, kid));
-            if get_result.is_err() {
-                eprintln!("Error with keyserver, using fallback keyserver: {:?}.", get_result.err().unwrap());
-                get_result = reqwest::get(&format!("{}{}", self.fallback_keyserver_url, kid));
-            }
-            let mut server_response = get_result?;
-            let mut public_key = Vec::new();
-            server_response.read_to_end(&mut public_key)?;
+            let public_key = self.fetch_key(&self.keyserver_url, &kid)
+                .or_else(|e| {
+                    eprintln!("Error fetching from keyserver, reason: {}. Trying fallback keyserver...", e);
+                    self.fetch_key(&self.fallback_keyserver_url, &kid)
+                })?;
 
+            // Decode the token, and store the public key in the cache.
             let result = self.decode_token(&token, &public_key);
             self.cache.insert(kid, (SystemTime::now(), public_key));
-
             return result;
         } else {
             Err(ValidatorError::InvalidKID(header).into())
