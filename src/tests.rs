@@ -299,6 +299,44 @@ fn validates_if_encounters_unrecognized_audience() {
 }
 
 #[test]
+fn validates_if_encounters_unrecognized_audience_as_vec() {
+    let now = Utc::now().timestamp();
+    let generator = Generator::default();
+    let mut validator = Validator::new(ValidatorOptions::default());
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct ClaimsWithAUDAsVec {
+        aud: Vec<String>,
+        iss: String,
+        exp: i64,
+        iat: i64,
+        jti: String
+    }
+
+    let mut claims = ClaimsWithAUDAsVec {
+        iss: String::from("service01"),
+        exp: now + 60,
+        iat: now,
+        aud: vec![], // explicitly set later
+        jti: String::from("foobar")
+    };
+
+    // Should succeed since claims vec contains `"resource_server_audience"`.
+    claims.aud = vec![String::from("foo"), String::from("resource_server_audience")];
+    let token = generator.generate(&claims).unwrap();
+    let _ = val_token::<ClaimsWithAUDAsVec>(&mut validator, token, &vec!["service01"]);
+
+    // Should fail since audience does not contain resource server's audience.
+    claims.aud = vec![String::from("foo"), String::from("bar")];
+    let token = generator.generate(&claims).unwrap();
+    match validator.decode::<ClaimsWithAUDAsVec>(token, &vec!["service01"]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!(format!("{}", e), "Resource server audience not found in `aud` claims of \
+            token [\"foo\", \"bar\"]")
+    }
+}
+
+#[test]
 fn validates_if_encounters_unauthorized_subject() {
     let generator = Generator::default();
     let mut validator = Validator::new(ValidatorOptions::default());
