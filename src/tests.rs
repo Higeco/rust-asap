@@ -53,6 +53,7 @@ impl Default for ValidatorOptions {
             resource_server_audience: String::from("resource_server_audience"),
             keyserver_url: String::from(KS_URL),
             fallback_keyserver_url: String::from(KS_URL),
+            validate_jti: false,
             cache_duration: None
         }
     }
@@ -155,6 +156,30 @@ fn it_works() {
     let authorized_subjects = vec!["service01"];
     let token_data = val_token(&mut validator, token, &authorized_subjects);
     assert_eq!(claims, token_data.claims);
+}
+
+#[test]
+fn it_rejects_duplicate_jti_claims() {
+    let mut claims = Claims::default();
+    let mut validator_options = ValidatorOptions::default();
+
+    // Enable duplicate `jti` detection:
+    validator_options.validate_jti = true;
+    claims.jti = String::from("first-nonce");
+
+    let generator = Generator::default();
+    let mut validator = Validator::new(validator_options);
+
+    // First token (first `jti` seen) should be successful.
+    let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims), &vec!["service01"]);
+    // Second token should fail (same `jti`).
+    match validator.decode::<Claims>(gen_token(&generator, &claims), &vec!["service01"]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!(format!("{}", e), "Duplicate `jti` encountered: \"first-nonce\"")
+    }
+    // Third token (different `jti`) should be successful.
+    claims.jti = String::from("second-nonce");
+    let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims), &vec!["service01"]);
 }
 
 #[test]

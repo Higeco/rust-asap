@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::env;
 use std::cmp::{min, max};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime};
 use std::result::{Result as StdResult};
 use jwt::{self, TokenData};
@@ -46,6 +46,9 @@ enum ValidatorError {
     #[fail(display = "Expired jwt signature, nbf: {:?} exp: {:?}", _0, _1)]
     ExpiredSignature(i64, i64),
 
+    #[fail(display = "Duplicate `jti` encountered: {:?}", _0)]
+    DuplicateJTI(String),
+
     #[fail(display = "Required claim not found in token: {:?}", _0)]
     ClaimNotFound(String),
 
@@ -76,6 +79,10 @@ pub struct ValidatorOptions {
     /// it to a lower value if desired. Setting to a value above one hour will
     /// have no effect (will default to one hour).
     pub max_lifespan: Option<i64>,
+    /// Whether or not the validator should check for duplicate `jti` nonces.
+    /// If this is set, then the validator will reject tokens who have a `jti`
+    /// claim that the validator has seen before.
+    pub validate_jti: bool,
     /// The duration of how long the validator should cache public keys fetched
     /// from the keyserver. Defaults to 10 minutes.
     pub cache_duration: Option<Duration>
@@ -87,6 +94,10 @@ pub struct ValidatorOptions {
 /// tokens. You can use this to take care of validating the ASAP token according
 /// [to the specification](https://s2sauth.bitbucket.io/spec/) (see the `decode`
 /// method).
+///
+/// You can (optionally) set the validator to check for duplicate `jti` nonces
+/// seen in requests by using `ValidatorOptions.validate_jti = true`. This means
+/// that any token whose `claims.jti` has been seen before will be rejected.
 ///
 /// ```rust
 /// # extern crate asap;
@@ -107,6 +118,7 @@ pub struct ValidatorOptions {
 ///     keyserver_url: String::from("http://my-keyserver/"),
 ///     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
 ///     resource_server_audience: String::from("my-server"),
+///     validate_jti: false,
 ///     cache_duration: None
 /// });
 ///
@@ -162,6 +174,10 @@ pub struct Validator {
     keyserver_url: String,
     /// The fallback keyserver URL. Must have a trailing "/".
     fallback_keyserver_url: String,
+    /// Whether or not the validator should check for duplicate `jti` nonces.
+    pub validate_jti: bool,
+    /// A hash-map used to store and check seen `jti` nonces.
+    jti_seen: HashSet<String>,
     /// A hash-map used for simple key-caching.
     cache: HashMap<String, (SystemTime, Vec<u8>)>,
     /// The duration each cached key is valid before it's fetched again.
@@ -180,6 +196,9 @@ impl Validator {
             fallback_keyserver_url: opts.fallback_keyserver_url,
             resource_server_audience: opts.resource_server_audience,
 
+            validate_jti: opts.validate_jti,
+            jti_seen: HashSet::new(),
+
             cache: HashMap::new(),
             cache_duration: opts.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION)
         }
@@ -192,6 +211,8 @@ impl Validator {
     /// * ASAP_KEYSERVER_URL: the URL of the keyserver, must end in a "/".
     /// * ASAP_FALLBACK_KEYSERVER_URL: the URL of the fallback keyserver, must
     ///     end in a "/".
+    ///
+    /// TOOD: other env vars to set other parts of validator?
     pub fn from_env() -> Validator {
         let get_env_var = |x| env::var(x)
             .expect(&format!("Could not find '{:?}' variable", x));
@@ -202,6 +223,7 @@ impl Validator {
             keyserver_url: get_env_var("ASAP_KEYSERVER_URL"),
             fallback_keyserver_url: get_env_var("ASAP_FALLBACK_KEYSERVER_URL"),
             resource_server_audience: get_env_var("ASAP_SERVER_AUDIENCE"),
+            validate_jti: false,
             cache_duration: None
         })
     }
@@ -297,6 +319,7 @@ impl Validator {
     /// #     keyserver_url: String::from("http://my-keyserver/"),
     /// #     fallback_keyserver_url: String::from("http://fallback-keyserver/"),
     /// #     resource_server_audience: String::from("my-server"),
+    /// #     validate_jti: false,
     /// #     cache_duration: None
     /// # });
     /// #
@@ -373,22 +396,26 @@ impl Validator {
     // TODO: (review) make parts of the validation optional/toggle-able perhaps?
     //
     // NOTE: currently using local-fork of `jsonwebtoken` for `claims_map`.
-    fn validate(&self, kid: &str, claims: &Map<String, Value>, authorized_subjects: &Vec<&str>) -> Result<()> {
+    fn validate(&mut self, kid: &str, claims: &Map<String, Value>, authorized_subjects: &Vec<&str>) -> Result<()> {
         let now = Utc::now().timestamp();
         let iss = extract_claim::<String>(claims, "iss")?;
         let exp = extract_claim::<i64>(claims, "exp")?;
         let iat = extract_claim::<i64>(claims, "iat")?;
         let aud = extract_aud_from_claims(claims)?;
-        // TODO: `jti` validation
-        // TODO: make this one toggle-able
-        //
+        let jti = extract_claim::<String>(claims, "jti")?;
+
         // From ASAP spec:
         // The resource server MAY reject a token if the token nonce (`jti`) has
         // been previously seen by the resource server in another request. If
         // the resource server decides to implement duplicate detection, it MUST
         // explicitly document that behaviour.
-        //
-        // let jti = extract_claim::<String>(claims, "jti")?;
+        if self.validate_jti {
+            if self.jti_seen.contains(&jti) {
+                return Err(ValidatorError::DuplicateJTI(jti.to_string()).into());
+            } else {
+                self.jti_seen.insert(jti.to_string());
+            }
+        }
 
         // From ASAP spec:
         // The resource server MUST check that the key identified by `kid` is
