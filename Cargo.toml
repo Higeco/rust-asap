@@ -4,13 +4,20 @@ members = ["support/keyserver"]
 [package]
 name = "asap"
 version = "0.1.0"
+license = "MIT"
+readme = "README.md"
 authors = ["acheronfail <acheronfail@gmail.com>"]
+keywords = ["asap", "jwt", "api", "token", "authorisation"]
+homepage = "https://bitbucket.org/acheronfail/rust-asap/"
+repository = "https://bitbucket.org/acheronfail/rust-asap/"
+description = "An implementation of ASAP for rust."
 
 [dependencies]
-jsonwebtoken = "4"
+jsonwebtoken = { path = "../jsonwebtoken" }
 serde_derive = "1"
 serde_json = "1"
 serde = "1"
+chrono = "0.4"
 reqwest = "0.8.6"
 failure = "0.1.1"
 failure_derive = "0.1.1"

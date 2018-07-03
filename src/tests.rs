@@ -5,23 +5,26 @@ use jwt;
 use reqwest;
 use std::time::Duration;
 use serde::de::DeserializeOwned;
+use chrono::Utc;
 
 // A private key to use to sign the tokens.
-const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/01-private.der");
-const PRIVATE_KEY_02: &[u8] = include_bytes!("../support/keys/02-private.der");
+const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/service01/1530402390-private.der");
+const PRIVATE_KEY_02: &[u8] = include_bytes!("../support/keys/service02/1530402393-private.der");
 // The path of the public key in the keyserver.
-const KID_01: &'static str = "01-public.der";
-const KID_02: &'static str = "02-public.der";
+const KID_01: &'static str = "service01/1530402390-public.der";
+const KID_02: &'static str = "service02/1530402393-public.der";
 // The URL of our test keyserver.
 const KS_URL: &'static str = "http://localhost:8000/";
 
-// A simple `Claims` struct. At the least this must include the `iss`, `sub` and
-// `aud` fields, but you can add extra claims to it as well.
+// A simple `Claims` struct. At the least this must include the `iss`, `exp`,
+// `iat`, `aud` and `jti` fields, but you can add extra claims to it as well.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Claims {
     iss: String,
-    sub: String,
+    exp: i64,
+    iat: i64,
     aud: String,
+    jti: String
 }
 
 /**
@@ -31,10 +34,13 @@ struct Claims {
 
 impl Default for Claims {
     fn default() -> Claims {
+        let now = Utc::now().timestamp();
         Claims {
-            iss: String::from("iss"),
-            sub: String::from("sub"),
-            aud: String::from("aud")
+            iss: String::from("service01"),
+            exp: now + 3600,
+            iat: now,
+            aud: String::from("resource_server_audience"),
+            jti: String::from("foobar")
         }
     }
 }
@@ -42,9 +48,9 @@ impl Default for Claims {
 impl Default for ValidatorOptions {
     fn default() -> ValidatorOptions {
         ValidatorOptions {
-            aud: ValidatorOptions::audience(&"aud"),
-            iss: Some(String::from("iss")),
-            sub: Some(String::from("sub")),
+            leeway: None,
+            max_lifespan: None,
+            resource_server_audience: String::from("resource_server_audience"),
             keyserver_url: String::from(KS_URL),
             fallback_keyserver_url: String::from(KS_URL),
             cache_duration: None
@@ -79,8 +85,8 @@ fn gen_token(generator: &Generator, claims: &Claims) -> String {
 
 // Given the validator and token, return the decoded token.
 // Panic on any error.
-fn val_token<T: DeserializeOwned>(validator: &mut Validator, token: String) -> jwt::TokenData<T> {
-    match validator.validate(token) {
+fn val_token<T: DeserializeOwned>(validator: &mut Validator, token: String, authorized_subjects: &Vec<&str>) -> jwt::TokenData<T> {
+    match validator.decode(token, authorized_subjects) {
         Ok(token_data) => token_data,
         Err(e) => {
             eprintln!("Error validating token: {}", e);
@@ -110,6 +116,16 @@ fn ks_count() -> String {
  * TODO: Surely, there's a better way to do this/run them in parallel.
  */
 
+// TODO: The resource server MUST check that the key identified by “kid” is owned by the issuer.
+// TODO: Resource servers MUST reject tokens signed with an unsupported algorithm
+// TODO: Unsigned access tokens MUST be rejected
+// TODO: if `sub` claim is not defined, the resource server MUST assume that the effective subject is the same as the issuer.
+// TODO: all of `validate()`'s checks...
+// TODO: fails with incorrect audience
+// TODO: `aud` Vec<String> and String both work correctly
+// TODO: instantiate from environment
+// TODO: ...
+
 #[test]
 fn keyserver_works() {
     // Count should start at 0.
@@ -135,7 +151,9 @@ fn it_works() {
     let generator = Generator::default();
     let mut validator = Validator::new(validator_options);
 
-    let token_data = val_token(&mut validator, gen_token(&generator, &claims));
+    let token = gen_token(&generator, &claims);
+    let authorized_subjects = vec!["service01"];
+    let token_data = val_token(&mut validator, token, &authorized_subjects);
     assert_eq!(claims, token_data.claims);
 }
 
@@ -149,7 +167,7 @@ fn it_fails_with_wrong_public_key() {
     generator.kid = String::from(KID_02);
     let mut validator = Validator::new(validator_options);
 
-    match validator.validate::<Claims>(gen_token(&generator, &claims)) {
+    match validator.decode::<Claims>(gen_token(&generator, &claims), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "Invalid signature")
     }
@@ -165,7 +183,7 @@ fn it_fails_with_wrong_private_key() {
     generator.private_key = PRIVATE_KEY_02;
     let mut validator = Validator::new(validator_options);
 
-    match validator.validate::<Claims>(gen_token(&generator, &claims)) {
+    match validator.decode::<Claims>(gen_token(&generator, &claims), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "Invalid signature")
     }
@@ -181,25 +199,9 @@ fn it_fails_with_no_public_key() {
     generator.kid = String::from("not-a-kid");
     let mut validator = Validator::new(validator_options);
 
-    match validator.validate::<Claims>(gen_token(&generator, &claims)) {
+    match validator.decode::<Claims>(gen_token(&generator, &claims), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "Failed to retrieve public key from keyserver")
-    }
-}
-
-#[test]
-fn it_fails_with_incorrect_audience() {
-    let claims = Claims::default();
-    let mut validator_options = ValidatorOptions::default();
-    // A different audience to the token's audience.
-    validator_options.aud = ValidatorOptions::audience(&"someone-else");
-
-    let generator = Generator::default();
-    let mut validator = Validator::new(validator_options);
-
-    match validator.validate::<Claims>(gen_token(&generator, &claims)) {
-        Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Invalid Audience")
     }
 }
 
@@ -213,7 +215,9 @@ fn it_uses_the_fallback_keyserver() {
     let generator = Generator::default();
     let mut validator = Validator::new(validator_options);
 
-    let token_data = val_token(&mut validator, gen_token(&generator, &claims));
+    let token = gen_token(&generator, &claims);
+    let authorized_subjects = vec!["service01"];
+    let token_data = val_token(&mut validator, token, &authorized_subjects);
     assert_eq!(claims, token_data.claims);
 }
 
@@ -229,9 +233,9 @@ fn it_fetches_key_from_cache() {
     let mut validator = Validator::new(validator_options);
 
     // Requesting the same `kid_01` twice should only result in 1 request.
-    let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims));
+    let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims), &vec!["service01"]);
     assert_eq!(ks_count(), "1");
-    let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims));
+    let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims), &vec!["service01"]);
     assert_eq!(ks_count(), "1");
 }
 
@@ -249,8 +253,8 @@ fn it_does_not_fetch_expired_key_from_cache() {
     let mut validator = Validator::new(validator_options);
 
     // The expired `kid_01` should be requested again = 2 requests.
-    let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims));
+    let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims), &vec!["service01"]);
     assert_eq!(ks_count(), "1");
-    let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims));
+    let _ = val_token::<Claims>(&mut validator, gen_token(&generator, &claims), &vec!["service01"]);
     assert_eq!(ks_count(), "2");
 }

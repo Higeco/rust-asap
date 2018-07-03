@@ -1,13 +1,14 @@
 # This script is used to generate a simple private/public key-pair in `der` format.
 function gen_keys() {
-  key_name=$1;
-  openssl genrsa -out "support/keys/$key_name-private.pem" 2048;
+  service=$1;
+  key_id=$2;
 
-  openssl rsa -in "support/keys/$key_name-private.pem" -outform DER -out "support/keys/$key_name-private.der";
-  openssl rsa -in "support/keys/$key_name-private.der" -inform DER -RSAPublicKey_out -outform DER -out "support/keys/$key_name-public.der";
+  mkdir -p "support/keys/$service";
+  openssl genrsa -out "support/keys/$service/$key_id-private.pem" 2048;
+
+  openssl rsa -in "support/keys/$service/$key_id-private.pem" -outform DER -out "support/keys/$service/$key_id-private.der";
+  openssl rsa -in "support/keys/$service/$key_id-private.der" -inform DER -RSAPublicKey_out -outform DER -out "support/keys/$service/$key_id-public.der";
 }
 
-mkdir -p "support/keys";
-
-gen_keys "01"
-gen_keys "02"
+gen_keys "service01" "$(date +%s)"
+gen_keys "service02" "$(date +%s)"

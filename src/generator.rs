@@ -36,11 +36,42 @@ use failure::Error;
 ///     Err(e) => eprintln!("Error generating token: {}", e)
 /// }
 /// ```
+///
+/// TODO: ensure ASAP mandatory claims are present:
+/// MANDATORY:
+///     iss: This String identifies the service that issues the token
+///     iat: issued at time: claim to the current time according to its internal clock
+///     exp: token expiry timestamp: If the environment can guarantee a good synchronisation
+///         between the internal clocks of the systems involved in the communication,
+///         a sub-minute expire time is recommended. There is a hard limit of one hour.
+///         MUST be AFTER `iat`
+///     aud: audience
+///     jti: token identifier: a generated nonce value that is unique within the
+///         temporal window of the token life time. The client MUST ensure that
+///         there is a very low probability that at any point in time there are
+///         more than one valid and non-expired tokens with the same “jti” value,
+///         considering that there may be many issuers and many instances of the
+///         same issuer.
+///     kid: the identifier of the key used to sign the token. The value of “kid”
+///         MUST be prefixed with the service identifier of the client and a “/”
+///         character.
+/// OPTIONAL:
+///     sub: This String identifies the principal (service or individual). If
+///         absent, the receiver MUST assume that the token was self-issued
+///         and therefore the subject is the same as the issuer
+///     nbf: not before
 pub struct Generator<'a> {
     /// Key ID. The identifier of the key used to sign the token in the format
     /// `"issuer/key-id"` where issuer matches `claims.iss`.
     ///
     /// TODO: ENSURE THIS IS RIGHT - BECAUSE IT'S NOT ATM
+    ///
+    /// FROM SPEC:
+    /// “kid”: key identifier, as defined by JWS, with the difference that here it
+    /// is mandatory. The key identifier MUST be a String that is a non-empty sequence
+    /// of non-empty substrings joined with the forward slash character (“/”).
+    /// None of the substrings can be “.” or “..”. As a further restriction, the
+    /// key identifier must match the following Java regular expression: ^[\w.\-\+/]*$.
     pub kid: String,
     /// The private key to use when generating the token.
     /// Currently, this only supports keys in the `.der` format.
@@ -56,6 +87,7 @@ pub struct Generator<'a> {
     pub private_key: &'a [u8]
 }
 
+// TODO: provide a predefined claims struct (both as a default and as an example)
 impl<'a> Generator<'a> {
     /// Creates an ASAP token generator which will generate tokens with the given
     /// `kid` and sign them with the given `private_key`.
@@ -67,6 +99,8 @@ impl<'a> Generator<'a> {
     }
 
     /// Generates an ASAP token with the given claims.
+    ///
+    /// TODO: update example with correct claims?
     ///
     /// ```rust
     /// # extern crate asap;
@@ -109,6 +143,8 @@ impl<'a> Generator<'a> {
     }
 
     /// Generates a pre-formatted Authorization header.
+    ///
+    /// TODO: update example with correct claims?
     ///
     /// ```rust
     /// # extern crate asap;
