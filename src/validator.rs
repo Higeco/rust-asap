@@ -37,11 +37,12 @@ enum ValidatorError {
     #[fail(display = "Expired item: {:?}", _0)]
     ExpiredCache(String),
 
-    #[fail(display = "Expired token")]
-    ExpiredToken,
+    #[fail(display = "Token contained a lifespan greater than the `max_lifespan` \
+        (hard limit of 3600 seconds)")]
+    InvalidLifespan,
 
-    #[fail(display = "Premature jwt signature, nbf: {:?} exp: {:?}", _0, _1)]
-    PrematureSignature(i64, i64),
+    #[fail(display = "Immature jwt signature, nbf: {:?} exp: {:?}", _0, _1)]
+    ImmatureSignature(i64, i64),
 
     #[fail(display = "Expired jwt signature, nbf: {:?} exp: {:?}", _0, _1)]
     ExpiredSignature(i64, i64),
@@ -56,8 +57,8 @@ enum ValidatorError {
         token {:?}", _0)]
     UnrecognisedAudience(Vec<String>),
 
-    #[fail(display = "Unknown or unauthorized subject {:?}. `iss` claim must \
-        exist in `authorized_subjects` {:?}", _0, _1)]
+    #[fail(display = "Unknown or unauthorized subject {:?}. The `sub` claim \
+        (or `iss`) must exist in `authorized_subjects` {:?}", _0, _1)]
     UnauthorizedSubject(String, Vec<String>)
 }
 
@@ -187,10 +188,24 @@ pub struct Validator {
 impl Validator {
     /// Creates a new ASAP Validator from the passed `ValidatorOptions`.
     pub fn new(opts: ValidatorOptions) -> Validator {
+        let jwt_validator = jwt::Validation {
+            // We perform our own validation of these claims.
+            leeway: 0,
+            validate_exp: false,
+            validate_iat: false,
+            validate_nbf: false,
+            iss: None,
+            sub: None,
+            aud: None,
+
+            // Currently, we only support the `RS256` algorithm.
+            algorithms: vec![jwt::Algorithm::RS256],
+        };
+
         Validator {
             leeway: opts.leeway.unwrap_or(0),
             max_lifespan: max(0, min(3600, opts.max_lifespan.unwrap_or(3600))),
-            jwt_validator: jwt::Validation::new(jwt::Algorithm::RS256),
+            jwt_validator: jwt_validator,
 
             keyserver_url: opts.keyserver_url,
             fallback_keyserver_url: opts.fallback_keyserver_url,
@@ -424,7 +439,7 @@ impl Validator {
         // the `iss` claim) and, in affirmative case, accept that as proof of
         // ownership of the key by the issuer.
         if !kid.starts_with(&format!("{}/", &iss)) {
-            return Err(ValidatorError::InvalidKID(kid.to_string(), kid.to_string()).into());
+            return Err(ValidatorError::InvalidKID(kid.to_string(), iss.to_string()).into());
         }
 
         // From ASAP spec:
@@ -436,7 +451,7 @@ impl Validator {
         // resource server.
         let nbf = extract_claim::<i64>(claims, "nbf").unwrap_or(iat);
         if nbf > now + self.leeway {
-            return Err(ValidatorError::PrematureSignature(nbf, exp).into());
+            return Err(ValidatorError::ImmatureSignature(nbf, exp).into());
         } else if exp < now - self.leeway {
             return Err(ValidatorError::ExpiredSignature(nbf, exp).into());
         }
@@ -447,7 +462,7 @@ impl Validator {
         // server MAY implement, at its discretion, a more restrictive upper
         // bound for the lifespan of a token.
         if exp - iat > self.max_lifespan {
-            return Err(ValidatorError::ExpiredToken.into());
+            return Err(ValidatorError::InvalidLifespan.into());
         }
 
         // From ASAP spec:

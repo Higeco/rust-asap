@@ -1,5 +1,9 @@
 //! This is the ASAP crate.
 //!
+//! TODO:
+//!     - document that this has optional `jti` validation
+//!     - document supported algorithms (RS256 only for now)
+//!
 //! TODO: review ASAP spec and ensure this is compliant:
 //! [ASAP Specification](https://s2sauth.bitbucket.io/spec/)
 //!
