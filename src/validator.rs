@@ -1,17 +1,17 @@
 use std::io::Read;
 use std::env;
-use std::cmp;
+use std::cmp::{min, max};
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
-use jwt;
+use std::result::{Result as StdResult};
+use jwt::{self, TokenData};
 use serde::de::DeserializeOwned;
 use serde_json::value::{from_value, Value};
 use serde_json::{self, Map};
 use chrono::Utc;
 use reqwest;
-use failure::Error;
 
-use errors::ResultExt;
+use errors::{Result, ResultExt};
 
 /// The duration of how long the validator should cache public keys fetched
 /// from the keyserver. Defaults to 10 minutes.
@@ -23,8 +23,9 @@ enum ValidatorError {
     #[fail(display = "JWT header did not contain a `kid` claim: {:?}", _0)]
     NoKIDFound(jwt::Header),
 
-    #[fail(display = "JWT header did not contain a valid `kid` claim. \
-        As per ASAP spec, the `kid` claim must start with \"$iss/\" where $iss is the issuer (kid: {:?}, iss: {:?})", _0, _1)]
+    #[fail(display = "JWT header did not contain a valid `kid` claim. As per \
+        ASAP spec, the `kid` claim must start with \"$iss/\" where $iss is the \
+        issuer (kid: {:?}, iss: {:?})", _0, _1)]
     InvalidKID(String, String),
 
     #[fail(display = "Received `None` when fetching from cache")]
@@ -48,10 +49,12 @@ enum ValidatorError {
     #[fail(display = "Required claim not found in token: {:?}", _0)]
     ClaimNotFound(String),
 
-    #[fail(display = "Resource server audience not found in `aud` claims of token {:?}", _0)]
+    #[fail(display = "Resource server audience not found in `aud` claims of \
+        token {:?}", _0)]
     UnrecognisedAudience(Vec<String>),
 
-    #[fail(display = "Unknown or unauthorized subject {:?}. `iss` claim must exist in `authorized_subjects` {:?}", _0, _1)]
+    #[fail(display = "Unknown or unauthorized subject {:?}. `iss` claim must \
+        exist in `authorized_subjects` {:?}", _0, _1)]
     UnauthorizedSubject(String, Vec<String>)
 }
 
@@ -79,6 +82,11 @@ pub struct ValidatorOptions {
 }
 
 /// An ASAP Validator.
+///
+/// Use this struct in your resource server to decode and validate incoming ASAP
+/// tokens. You can use this to take care of validating the ASAP token according
+/// [to the specification](https://s2sauth.bitbucket.io/spec/) (see the `decode`
+/// method).
 ///
 /// ```rust
 /// # extern crate asap;
@@ -108,7 +116,7 @@ pub struct ValidatorOptions {
 ///     iat: i64,
 ///     exp: i64,
 ///     iss: String,
-///     aud: String, // or Vec<String>///     aud: String, // or Vec<String>
+///     aud: String, // or Vec<String>
 ///     jti: String,
 /// }
 ///
@@ -117,30 +125,38 @@ pub struct ValidatorOptions {
 ///
 /// match validator.decode::<MyClaims>(asap_token, &authorized_subjects) {
 ///     Ok(token_data) => {
+///         // Here you have a successfully verified and accepted access token!
+///         //
+///         // Remember the directions from the ASAP spec:
+///         // If the resource server successfully verifies and accepts the
+///         // access token, then it MUST process the request and it MUST assume
+///         // that the request was issued by the issuer.
 ///         println!("claims {:?}", token_data.claims);
 ///     },
-///     Err(e) => eprintln!("{:?}", e)
+///     Err(e) => {
+///         // Oh boo, there was an error decoding and validating the ASAP token.
+///         //
+///         // Remember the directions from the ASAP spec:
+///         // If the resource server rejects the access token, then it MUST
+///         // reply with a status code of 401 UNAUTHORIZED and MUST include a
+///         // WWW-Authenticate header field as per the HTTP specification.
+///         eprintln!("{:?}", e);
+///     }
 /// }
 /// ```
-///
-/// TODO: be compliant with ASAP spec:
-/// - The resource server MAY reject a token if the token nonce (“jti”) has been previously seen by the resource server
-///     in another request. If the resource server decides to implement duplicate detection, it MUST explicitly document
-///     that behaviour.
-/// - If the resource server successfully verifies and accepts the access token, then it MUST process the request and it
-///     MUST assume that the request was issued by the issuer. If the resource server rejects the access token, then it
-///     MUST reply with a status code of 401 UNAUTHORIZED and MUST include a WWW-Authenticate header field as per the
-///     HTTP specification (just document this)
 pub struct Validator {
-    /// The actual jwt validator (from `jsonwebtoken` crate).
+    /// The actual jwt validator (from the `jsonwebtoken` crate). This is used
+    /// to decode the token and verify its signature.
     jwt_validator: jwt::Validation,
     /// The identifier of the resource server. Incoming ASAP tokens must include
     /// this identifier in their `aud` claim in order for the token to be valid.
     resource_server_audience: String,
     /// Since validating time fields is always a bit tricky due to clock skew,
-    /// this field adds `leeway` to the `iat`, `exp` and `nbf` validation.
+    /// this field (measured in seconds) adds `leeway` to the `iat`, `exp` and
+    /// `nbf` validation.
     leeway: i64,
     /// The max lifespan of the token (the difference between `exp` and `iat`).
+    /// The ASAP spec defines a hard upper limit of one hour.
     max_lifespan: i64,
     /// The keyserver URL. Must have a trailing "/".
     keyserver_url: String,
@@ -148,32 +164,38 @@ pub struct Validator {
     fallback_keyserver_url: String,
     /// A hash-map used for simple key-caching.
     cache: HashMap<String, (SystemTime, Vec<u8>)>,
-    /// The time each cached key is used saved before being fetched again.
+    /// The duration each cached key is valid before it's fetched again.
     cache_duration: Duration
 }
 
 impl Validator {
-    /// Creates a new ASAP Validator from the passed options.
+    /// Creates a new ASAP Validator from the passed `ValidatorOptions`.
     pub fn new(opts: ValidatorOptions) -> Validator {
         Validator {
-            jwt_validator: jwt::Validation::new(jwt::Algorithm::RS256),
-            resource_server_audience: opts.resource_server_audience,
             leeway: opts.leeway.unwrap_or(0),
-            max_lifespan: cmp::max(0, cmp::min(3600, opts.max_lifespan.unwrap_or(3600))),
+            max_lifespan: max(0, min(3600, opts.max_lifespan.unwrap_or(3600))),
+            jwt_validator: jwt::Validation::new(jwt::Algorithm::RS256),
+
             keyserver_url: opts.keyserver_url,
             fallback_keyserver_url: opts.fallback_keyserver_url,
+            resource_server_audience: opts.resource_server_audience,
+
             cache: HashMap::new(),
             cache_duration: opts.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION)
         }
     }
 
-    /// Instantiates a validator from the environment. Requires that the following
-    /// environment variables be defined:
+    /// Instantiates a validator from the environment. Requires that the
+    /// following environment variables be defined:
     ///
+    /// * ASAP_SERVER_AUDIENCE: the resource identifier of the validator
     /// * ASAP_KEYSERVER_URL: the URL of the keyserver, must end in a "/".
-    /// * ASAP_FALLBACK_KEYSERVER_URL: the URL of the fallback keyserver, must end in a "/".
+    /// * ASAP_FALLBACK_KEYSERVER_URL: the URL of the fallback keyserver, must
+    ///     end in a "/".
     pub fn from_env() -> Validator {
-        let get_env_var = |x| env::var(x).expect(&format!("Could not find '{:?}' variable", x));
+        let get_env_var = |x| env::var(x)
+            .expect(&format!("Could not find '{:?}' variable", x));
+
         Validator::new(ValidatorOptions {
             leeway: None,
             max_lifespan: None,
@@ -184,14 +206,8 @@ impl Validator {
         })
     }
 
-    // Decode the given token with the given public key.
-    fn decode_token<T: DeserializeOwned>(&self, token: &str, public_key: &Vec<u8>) -> Result<jwt::TokenData<T>, Error> {
-        let token_data = jwt::decode::<T>(token, public_key, &self.jwt_validator).sync()?;
-        Ok(token_data)
-    }
-
-    // Attempt to fetch the public key from cache and use that to decode the token.
-    fn get_key_from_cache(&mut self, kid: &str) -> Result<Vec<u8>, Error> {
+    // Attempt to fetch the public key from cache.
+    fn get_key_from_cache(&mut self, kid: &str) -> Result<Vec<u8>> {
         if let Some((when, public_key)) = self.cache.get(kid) {
             let time_since = when.elapsed()?;
             if time_since <= self.cache_duration {
@@ -204,47 +220,63 @@ impl Validator {
         }
     }
 
-    // Fetch the public key by returning the response body of: `GET <server_url><kid>`.
-    fn get_key_from_server(&self, server_url: &str, kid: &str) -> Result<Vec<u8>, Error> {
+    // Fetch the public key from the keyserver by returning the response body
+    // of: `GET <server_url><kid>`.
+    fn get_key_from_server(&self, server_url: &str, kid: &str) -> Result<Vec<u8>> {
         let mut response = reqwest::get(&format!("{}{}", server_url, kid))?;
         if response.status().is_success() {
             let mut public_key = Vec::new();
             response.read_to_end(&mut public_key)?;
             Ok(public_key)
         } else {
+            // TODO: add request error context here
             Err(ValidatorError::KeyserverError.into())
         }
     }
 
     // Retrieves the public key for `kid`, checking the cache and then fetching
     // the key from the keyserver if the key isn't cached.
-    fn get_public_key(&mut self, kid: &str) -> Result<Vec<u8>, Error> {
+    fn get_public_key(&mut self, kid: &str) -> Result<Vec<u8>> {
         // Fetch key from cache if there's a key.
         if self.cache.contains_key(kid) {
-            // Extra scope here since `self.get_key_from_cache` borrows the internal cache mutably.
-            // We won't be able to remove anything from the cache if the ref is still alive.
+            // Extra scope here since `self.get_key_from_cache` borrows the
+            // internal cache mutably. We won't be able to remove anything from
+            // the cache if this ref is still alive.
             {
                 let cached_key = self.get_key_from_cache(&kid);
                 if cached_key.is_ok() {
                     return cached_key;
                 }
-                eprintln!("Error fetching from cache, reason: {}. Trying keyserver...", cached_key.err().unwrap());
+                eprintln!("Error fetching from cache, reason: {}. \
+                    Trying keyserver...", cached_key.err().unwrap());
             }
-            // If there was any error fetching the key from the cache, just remove the entry.
+            // If there was any error fetching the key from the cache, just
+            // remove the entry from cache.
             self.cache.remove(kid);
         }
 
         // Otherwise, fetch the public key from the keyserver(s).
         self.get_key_from_server(&self.keyserver_url, &kid)
             .or_else(|e| {
-                eprintln!("Error fetching from keyserver, reason: {}. Trying fallback keyserver...", e);
+                eprintln!("Error fetching from keyserver, reason: {}. \
+                    Trying fallback keyserver...", e);
                 self.get_key_from_server(&self.fallback_keyserver_url, &kid)
             })
     }
 
-    /// Decodes the given token, returning both its claims and header.
+    /// Decodes and validates the given token, returning both its claims and
+    /// header.
     ///
-    /// TODO: explain spec compliance
+    /// This method will take care of ensuring your incoming ASAP token is valid
+    /// according [to the specification](https://s2sauth.bitbucket.io/spec/).
+    /// This includes validation of:
+    /// - mandatory claims: `iss`, `exp`, `iat`, `aud` and `jti`
+    /// - a valid and well-formed `kid` in the jwt header
+    /// - the token's lifespan (`nbf`, `iat` and `exp` checks)
+    /// - the `aud` matching/containing `resource_server_audience`
+    /// - the issuer/subject having authorisation (via `authorized_subjects`)
+    ///
+    /// TODO: add in `jti` documentation when complete
     ///
     /// ```rust
     /// # extern crate asap;
@@ -263,7 +295,7 @@ impl Validator {
     /// #     leeway: None,
     /// #     max_lifespan: None,
     /// #     keyserver_url: String::from("http://my-keyserver/"),
-    /// #     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
+    /// #     fallback_keyserver_url: String::from("http://fallback-keyserver/"),
     /// #     resource_server_audience: String::from("my-server"),
     /// #     cache_duration: None
     /// # });
@@ -294,71 +326,87 @@ impl Validator {
     ///     Err(e) => eprintln!("{:?}", e)
     /// }
     /// ```
-    pub fn decode<T: DeserializeOwned>(&mut self, token: String, authorized_subjects: &Vec<&str>) -> Result<jwt::TokenData<T>, Error> {
-        // First, decode the header to get the `kid`.
+    pub fn decode<T>(&mut self, token: String, authorized_subjects: &Vec<&str>) -> Result<TokenData<T>>
+        where T: DeserializeOwned
+    {
+        // First, decode the header.
         let header = jwt::decode_header(&token).sync()?;
 
-        // Extract key id from jwt header.
+        // Extract `kid` (the public key id) from jwt header.
         let kid = if header.kid.is_some() {
             header.kid.unwrap().to_string()
         } else {
             return Err(ValidatorError::NoKIDFound(header).into());
         };
 
-        // Retreive public key (from cache or the keyserver).
+        // Retreive the public key (from cache or the keyserver).
         let public_key = self.get_public_key(&kid)?;
 
-        // Decode the token.
-        let token_data = self.decode_token::<T>(&token, &public_key)?;
+        // Decode the token (this also validates its signature).
+        let data = jwt::decode::<T>(&token, &public_key, &self.jwt_validator).sync()?;
 
-        // Ensure the token is valid (according to ASAP).
-        self.validate(&kid, &token_data.claims_map, authorized_subjects)?;
+        // Ensure the token is valid (according to the ASAP specification).
+        self.validate(&kid, &data.claims_map, authorized_subjects)?;
 
-        // If everything worked, then store the public key in the cache.
+        // If everything looks good, then store the public key in the cache.
         self.cache.insert(kid, (SystemTime::now(), public_key));
 
         // Return the decoded token.
-        Ok(token_data)
+        Ok(data)
     }
 
     /// Decodes the given token, returning both its claims and header.
     ///
-    /// WARNING! This function performs NO ASAP OR SIGNATURE VALIDATION on the
-    /// token. Do not use this unless you know what you are doing.
-    pub fn dangerous_unsafe_decode<T: DeserializeOwned>(&mut self, token: &str) -> Result<jwt::TokenData<T>, Error> {
-        let token_data = jwt::dangerous_unsafe_decode::<T>(token).sync()?;
-        Ok(token_data)
+    /// !!! WARNING !!!
+    /// This function performs NO ASAP OR SIGNATURE VALIDATION on the token. Do
+    /// not use this unless you know what you are doing.
+    /// !!! WARNING !!!
+    pub fn dangerous_unsafe_decode<T>(&mut self, token: &str) -> Result<TokenData<T>>
+        where T: DeserializeOwned
+    {
+        Ok(jwt::dangerous_unsafe_decode::<T>(token).sync()?)
     }
 
     // Validates the JWT token as per the ASAP specification.
-    // As per the ASAP spec, the following claims are mandatory: `iss`, `exp`,
-    // `iat`, `aud` and `jti`.
+    // The following claims are mandatory: `iss`, `exp`, `iat`, `aud` and `jti`.
     //
     // TODO: (review) make parts of the validation optional/toggle-able perhaps?
-    // NOTE: currently using local-fork of `jsonwebtoken` for `claims_map`!
-    fn validate(&self, kid: &str, claims: &Map<String, Value>, authorized_subjects: &Vec<&str>) -> Result<(), Error> {
+    //
+    // NOTE: currently using local-fork of `jsonwebtoken` for `claims_map`.
+    fn validate(&self, kid: &str, claims: &Map<String, Value>, authorized_subjects: &Vec<&str>) -> Result<()> {
         let now = Utc::now().timestamp();
         let iss = extract_claim::<String>(claims, "iss")?;
         let exp = extract_claim::<i64>(claims, "exp")?;
         let iat = extract_claim::<i64>(claims, "iat")?;
         let aud = extract_aud_from_claims(claims)?;
         // TODO: `jti` validation
+        // TODO: make this one toggle-able
+        //
+        // From ASAP spec:
+        // The resource server MAY reject a token if the token nonce (`jti`) has
+        // been previously seen by the resource server in another request. If
+        // the resource server decides to implement duplicate detection, it MUST
+        // explicitly document that behaviour.
+        //
         // let jti = extract_claim::<String>(claims, "jti")?;
 
         // From ASAP spec:
-        // The resource server MUST check that the key identified by “kid” is owned by the issuer.
-        // In order to do so, the resource server MAY check if the “kid” string starts with “$iss/” (where $iss is
-        // the value of the “iss” claim) and, in affirmative case, accept that as proof of ownership of the key by
-        // the issuer.
+        // The resource server MUST check that the key identified by `kid` is
+        // owned by the issuer. In order to do so, the resource server MAY check
+        // if the `kid` string starts with `$iss/` (where $iss is the value of
+        // the `iss` claim) and, in affirmative case, accept that as proof of
+        // ownership of the key by the issuer.
         if !kid.starts_with(&format!("{}/", &iss)) {
             return Err(ValidatorError::InvalidKID(kid.to_string(), kid.to_string()).into());
         }
 
         // From ASAP spec:
-        // The resource server MUST verify that the current time is between “nbf” (optional) and “exp” (required),
-        // inclusive. For the purposes of this comparison, a missing “nbf” claim defaults to the value of “iat”. The
-        // resource server MAY offer, at its discretion, a grace period to compensate for internal clock divergences
-        // between the client and the resource server.
+        // The resource server MUST verify that the current time is between `nbf`
+        // (optional) and `exp` (required), inclusive. For the purposes of this
+        // comparison, a missing `nbf` claim defaults to the value of `iat`. The
+        // resource server MAY offer, at its discretion, a grace period to
+        // compensate for internal clock divergences between the client and the
+        // resource server.
         let nbf = extract_claim::<i64>(claims, "nbf").unwrap_or(iat);
         if nbf > now + self.leeway {
             return Err(ValidatorError::PrematureSignature(nbf, exp).into());
@@ -367,44 +415,57 @@ impl Validator {
         }
 
         // From ASAP spec:
-        // The resource server MUST reject a token if it lifespan (the difference between “exp” and “iat”) exceeds one
-        // hour (hard limit). A resource server MAY implement, at its discretion, a more restrictive upper bound for the
-        // lifespan of a token.
+        // The resource server MUST reject a token if it lifespan (the difference
+        // between `exp` and `iat`) exceeds one hour (hard limit). A resource
+        // server MAY implement, at its discretion, a more restrictive upper
+        // bound for the lifespan of a token.
         if exp - iat > self.max_lifespan {
             return Err(ValidatorError::ExpiredToken.into());
         }
 
         // From ASAP spec:
-        // The resource server MUST verify that it is the intended audience of the access token by checking that at
-        // least one of the values of `aud` is the identifier of the resource server mutually agreed by the client and
-        // the resource server.
+        // The resource server MUST verify that it is the intended audience of
+        // the access token by checking that at least one of the values of `aud`
+        // is the identifier of the resource server mutually agreed by the
+        // client and the resource server.
         if !aud.contains(&self.resource_server_audience) {
             return Err(ValidatorError::UnrecognisedAudience(aud).into());
         }
 
         // From ASAP spec:
-        // If `sub` claim is not defined, the resource server MUST assume that the effective subject is the same as the
-        // issuer (the `iss` claim)
+        // If `sub` claim is not defined, the resource server MUST assume that
+        // the effective subject is the same as the issuer (the `iss` claim).
         let sub = extract_claim::<String>(claims, "sub").unwrap_or(iss);
 
-        // Here, we verify that the token's subject is contained in the `authorized_subjects` vec. This check isn't
-        // explicitly defined in the spec, but the spec suggests that a resource server should decide if the issuer of
-        // the token is authorised to make requests (either by checking the `iss` or the `sub` claims).
-        // Thus, we provide `authorized_subjects` as an argument to `Validator.decode` so the user of this library may
-        // pass a vec of strings to further verify that the token is valid.
+        // Here, we verify that the token's subject is contained in the
+        // `authorized_subjects` vec. This check isn't explicitly defined in the
+        // spec, but the spec suggests that a resource server should decide if
+        // the issuer of the token is authorised to make requests (by checking
+        // checking either the `iss` or the `sub` claim). Thus, we provide
+        // `authorized_subjects` as an argument to `Validator.decode` so the
+        // user of this library may pass a vec of strings to further verify that
+        // the token is valid.
         //
         // See ASAP spec:
-        // The verification process [(all the above checks)] ... allows the resource server to authenticate the token as
-        // a valid token issued by the owner of the private key. This process does not cover the following aspects that
-        // the resource server SHOULD implement by its own means:
-        // - The resource server MAY decide if the verified issuer is authorised to communicate with the resource server.
-        // - The resource server MAY decide if the verified issuer is authorised to make requests in relation to the
-        //      claimed subject (principal).
-        // - The resource server MAY decide if the combination of verified issuer and effective subject is authorised to
-        //      make the requested business operation.
+        // The verification process [(all the above checks)] ... allows the
+        // resource server to authenticate the token as a valid token issued by
+        // the owner of the private key. This process does not cover the
+        // following aspects that the resource server SHOULD implement by its
+        // own means:
+        // - The resource server MAY decide if the verified issuer is authorised
+        //      to communicate with the resource server.
+        // - The resource server MAY decide if the verified issuer is authorised
+        //      to make requests in relation to the claimed subject (principal).
+        // - The resource server MAY decide if the combination of verified
+        //      issuer and effective subject is authorised to make the requested
+        //      business operation.
         if !authorized_subjects.contains(&&*sub) {
-            let subjects = authorized_subjects.clone().into_iter().map(|x| x.to_owned()).collect();
-            return Err(ValidatorError::UnauthorizedSubject(sub.to_string(), subjects).into());
+            let sub = sub.to_string();
+            let subjects = authorized_subjects.clone()
+                .into_iter()
+                .map(|x| x.to_owned())
+                .collect();
+            return Err(ValidatorError::UnauthorizedSubject(sub, subjects).into());
         }
 
         // Token has been validated and authorised, proceed!
@@ -412,16 +473,16 @@ impl Validator {
     }
 }
 
-// Helper fn to extract the `aud` claim (which may be a string or array of strings)
-// from a claims map. Always returns the `aud` claims as a `Vec<String>`.
-fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String>, Error> {
+// Helper fn to extract the `aud` claim (which may be a string or array of
+// strings) from a claims map.
+// Always returns the `aud` claims as a `Vec<String>`.
+fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String>> {
     if let Some(aud) = claims.get("aud") {
-        let as_string: Result<String, serde_json::Error> = from_value(aud.clone());
+        let as_string: StdResult<String, serde_json::Error> = from_value(aud.clone());
         if as_string.is_ok() {
             Ok(vec![as_string.unwrap()])
         } else {
-            let as_vec: Vec<String> = from_value(aud.clone())?;
-            Ok(as_vec)
+            Ok(from_value::<Vec<String>>(aud.clone())?)
         }
     } else {
         Err(ValidatorError::ClaimNotFound("aud".to_string()).into())
@@ -429,7 +490,9 @@ fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String>, E
 }
 
 // Helper fn to extract the given claim from a claims map.
-fn extract_claim<T: DeserializeOwned>(claims: &Map<String, Value>, key: &str) -> Result<T, Error> {
+fn extract_claim<T>(claims: &Map<String, Value>, key: &str) -> Result<T>
+    where T: DeserializeOwned
+{
     if let Some(x) = claims.get(key) {
         Ok(from_value::<T>(x.clone())?)
     } else {

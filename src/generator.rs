@@ -1,7 +1,7 @@
 use jwt;
 use serde::ser::Serialize;
-use errors::ResultExt;
-use failure::Error;
+
+use errors::{Result, ResultExt};
 
 /// An ASAP generator.
 ///
@@ -28,7 +28,7 @@ use failure::Error;
 /// // The `kid` of the public key in your keyserver.
 /// let kid = String::from("my-iss/my-key-id");
 /// // The `private_key` used to sign each token.
-/// let private_key = include_bytes!("../support/keys/01-private.der");
+/// let private_key = include_bytes!("../support/keys/service01/1530402390-private.der");
 ///
 /// let generator = Generator::new(kid, private_key);
 /// match generator.generate(&claims) {
@@ -125,13 +125,13 @@ impl<'a> Generator<'a> {
     /// # // The `kid` of the public key in your keyserver.
     /// # let kid = String::from("my-iss/my-key-id");
     /// # // The `private_key` used to sign each token.
-    /// # let private_key = include_bytes!("../support/keys/01-private.der");
+    /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der");
     /// #
     /// let generator = Generator::new(kid, private_key);
     /// let token = generator.generate(&claims).unwrap();
     /// println!("{:?}", token); // eyJ0eXAiOiJKV...
     /// ```
-    pub fn generate<T: Serialize>(&self, claims: &T) -> Result<String, Error> {
+    pub fn generate<T: Serialize>(&self, claims: &T) -> Result<String> {
         // Generate the jwt header.
         let mut header = jwt::Header::default();
         header.kid = Some(self.kid.to_string());
@@ -169,13 +169,13 @@ impl<'a> Generator<'a> {
     /// # // The `kid` of the public key in your keyserver.
     /// # let kid = String::from("my-iss/my-key-id");
     /// # // The `private_key` used to sign each token.
-    /// # let private_key = include_bytes!("../support/keys/01-private.der");
+    /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der");
     /// #
     /// let generator = Generator::new(kid, private_key);
     /// let auth_header = generator.generate_auth_header(&claims).unwrap();
     /// println!("{:?}", auth_header); // "Bearer eyJ0eXAiOiJKV..."
     /// ```
-    pub fn generate_auth_header<T: Serialize>(&self, claims: &T) -> Result<String, Error> {
+    pub fn generate_auth_header<T: Serialize>(&self, claims: &T) -> Result<String> {
         let token = self.generate(claims)?;
         Ok(format!("Bearer {}", token))
     }
