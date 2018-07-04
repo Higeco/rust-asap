@@ -1,0 +1,3 @@
+[submodule "jsonwebtoken"]
+	path = jsonwebtoken
+	url = https://github.com/acheronfail/jsonwebtoken/
