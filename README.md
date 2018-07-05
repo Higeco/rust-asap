@@ -1,24 +1,44 @@
 # ASAP for Rust
 
-TODO: write information about lib
+This is a rust library for generating and validating ASAP tokens. It provides options for doing so that are compliant with the [ASAP specification](https://s2sauth.bitbucket.io/spec/).
 
-## Usage
+## Installation and Usage
 
-TODO: write usage? build docs?
+This crate currently depends on a valid installation of `openssl`. See the [`openssl` crate's repo](https://github.com/sfackler/rust-openssl) for more installation details relating to `openssl`. 
+It depends on `openssl` in order to convert a PEM-encoded private key to DER when instantiating from environment variables (see [`Generator::from_env()`](./src/generator.rs)).
 
-## Running tests
+Other than that, this crate simply provides an ASAP `Generator` and an ASAP `Validator`, which generate and validate ASAP tokens according [to the specification](https://s2sauth.bitbucket.io/spec/).
+
+To install, add the following lines to your `Cargo.toml`:
+
+```toml
+asap = "1"
+# These crates are required for defining your own `Claims` struct (which needs
+# to be serialised into the token).
+serde_derive = "1"
+serde = "1"
+```
+
+And see [the documentation and API](https://docs.rs/asap) which should be straightforward enough for anything you'd need.
+
+## Development/Testing
 
 Currently, running the tests has some limitations:
 
-* needs a local keyserver
-* they need to be run serially
+* The tests need a local keyserver running at `http://localhost:8000`
+	- [A sample mini-keyserver is provided](./support/keyserver) in this repository
+* The tests need to be run serially
+	- Since they also test that requests were made to the keyserver, etc.
 
 To run the tests, perform the following:
 
 ```bash
-# Run a simple keyserver.
+# Runs a simple keyserver.
 cargo run -p keyserver
 
 # In a different shell, run the tests serially:
 RUST_TEST_THREADS=1 cargo test
 ```
+## License
+
+[MIT](./LICENSE.md)

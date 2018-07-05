@@ -1,0 +1,33 @@
+use serde::de::DeserializeOwned;
+use serde_json::{from_value, Value};
+use serde_json::map::Map;
+
+use errors::{Result, ValidatorError};
+
+// Helper fn to extract the `aud` claim (which may be a string or array of
+// strings) from a claims map.
+// Always returns the `aud` claims as a `Vec<String>`.
+pub fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String>> {
+    if let Some(value) = claims.get("aud") {
+        if value.is_array() {
+            Ok(from_value::<Vec<String>>(value.clone())?)
+        } else {
+            Ok(vec![from_value::<String>(value.clone())?])
+        }
+    } else {
+        Err(ValidatorError::ClaimNotFound("aud".to_string()).into())
+    }
+}
+
+// Helper fn to extract the given claim from a claims map.
+pub fn extract_claim<T>(claims: &Map<String, Value>, key: &str) -> Result<T>
+    where T: DeserializeOwned
+{
+    if let Some(x) = claims.get(key) {
+        Ok(from_value::<T>(x.clone())?)
+    } else {
+        return Err(ValidatorError::ClaimNotFound(key.to_string()).into());
+    }
+}
+
+

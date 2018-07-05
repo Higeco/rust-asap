@@ -5,61 +5,17 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime};
 use jwt::{self, TokenData};
 use serde::de::DeserializeOwned;
-use serde_json::value::{from_value, Value};
+use serde_json::value::Value;
 use serde_json::Map;
 use chrono::Utc;
 use reqwest;
 
-use errors::{Result, ResultExt};
+use util::{extract_claim, extract_aud_from_claims};
+use errors::{Result, ResultExt, ValidatorError};
 
 /// The duration of how long the validator should cache public keys fetched
 /// from the keyserver. Defaults to 10 minutes.
 pub const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(600);
-
-// The types of errors a Validator may encounter.
-#[derive(Fail, Debug)]
-enum ValidatorError {
-    #[fail(display = "JWT header did not contain a `kid` claim: {:?}", _0)]
-    NoKIDFound(jwt::Header),
-
-    #[fail(display = "JWT header did not contain a valid `kid` claim. As per \
-        ASAP spec, the `kid` claim must start with \"$iss/\" where $iss is the \
-        issuer (kid: {:?}, iss: {:?})", _0, _1)]
-    InvalidKID(String, String),
-
-    #[fail(display = "Received `None` when fetching from cache")]
-    CacheError,
-
-    #[fail(display = "Failed to retrieve public key from keyserver")]
-    KeyserverError,
-
-    #[fail(display = "Expired item: {:?}", _0)]
-    ExpiredCache(String),
-
-    #[fail(display = "Token contained a lifespan greater than the `max_lifespan` \
-        (hard limit of 3600 seconds)")]
-    InvalidLifespan,
-
-    #[fail(display = "Immature jwt signature, nbf: {:?} exp: {:?}", _0, _1)]
-    ImmatureSignature(i64, i64),
-
-    #[fail(display = "Expired jwt signature, nbf: {:?} exp: {:?}", _0, _1)]
-    ExpiredSignature(i64, i64),
-
-    #[fail(display = "Duplicate `jti` encountered: {:?}", _0)]
-    DuplicateJTI(String),
-
-    #[fail(display = "Required claim not found in token: {:?}", _0)]
-    ClaimNotFound(String),
-
-    #[fail(display = "Resource server audience not found in `aud` claims of \
-        token {:?}", _0)]
-    UnrecognisedAudience(Vec<String>),
-
-    #[fail(display = "Unknown or unauthorized subject {:?}. The `sub` claim \
-        (or `iss`) must exist in `authorized_subjects` {:?}", _0, _1)]
-    UnauthorizedSubject(String, Vec<String>)
-}
 
 /// Options used to configure an ASAP Validator.
 pub struct ValidatorOptions {
@@ -226,10 +182,11 @@ impl Validator {
     /// * ASAP_FALLBACK_KEYSERVER_URL: the URL of the fallback keyserver, must
     ///     end in a "/".
     ///
-    /// TOOD: other env vars to set other parts of validator?
+    /// TODO: other env vars to set other parts of validator?
+    /// TODO: example
     pub fn from_env() -> Validator {
         let get_env_var = |x| env::var(x)
-            .expect(&format!("Could not find '{:?}' variable", x));
+            .expect(&format!("Could not find '{:?}' environment variable", x));
 
         Validator::new(ValidatorOptions {
             leeway: None,
@@ -415,8 +372,8 @@ impl Validator {
         let iss = extract_claim::<String>(claims, "iss")?;
         let exp = extract_claim::<i64>(claims, "exp")?;
         let iat = extract_claim::<i64>(claims, "iat")?;
-        let aud = extract_aud_from_claims(claims)?;
         let jti = extract_claim::<String>(claims, "jti")?;
+        let aud = extract_aud_from_claims(claims)?;
 
         // From ASAP spec:
         // The resource server MAY reject a token if the token nonce (`jti`) has
@@ -514,28 +471,4 @@ impl Validator {
     }
 }
 
-// Helper fn to extract the `aud` claim (which may be a string or array of
-// strings) from a claims map.
-// Always returns the `aud` claims as a `Vec<String>`.
-fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String>> {
-    if let Some(value) = claims.get("aud") {
-        if value.is_array() {
-            Ok(from_value::<Vec<String>>(value.clone())?)
-        } else {
-            Ok(vec![from_value::<String>(value.clone())?])
-        }
-    } else {
-        Err(ValidatorError::ClaimNotFound("aud".to_string()).into())
-    }
-}
 
-// Helper fn to extract the given claim from a claims map.
-fn extract_claim<T>(claims: &Map<String, Value>, key: &str) -> Result<T>
-    where T: DeserializeOwned
-{
-    if let Some(x) = claims.get(key) {
-        Ok(from_value::<T>(x.clone())?)
-    } else {
-        return Err(ValidatorError::ClaimNotFound(key.to_string()).into());
-    }
-}

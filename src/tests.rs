@@ -3,6 +3,7 @@ use super::validator::{Validator, ValidatorOptions};
 
 use jwt;
 use reqwest;
+use std::env;
 use std::time::Duration;
 use serde::de::DeserializeOwned;
 use chrono::Utc;
@@ -59,11 +60,12 @@ impl Default for ValidatorOptions {
     }
 }
 
-impl<'a> Default for Generator<'a> {
-    fn default() -> Generator<'a> {
+impl Default for Generator {
+    fn default() -> Generator {
         Generator {
             kid: String::from(KID_01),
-            private_key: PRIVATE_KEY_01
+            private_key: PRIVATE_KEY_01.to_vec(),
+            validate_claims: false
         }
     }
 }
@@ -75,7 +77,7 @@ impl<'a> Default for Generator<'a> {
 // Given the generator and claims, return a token.
 // Panic on any error.
 fn gen_token(generator: &Generator, claims: &Claims) -> String {
-    match generator.generate(claims) {
+    match generator.token(claims) {
         Ok(token) => token,
         Err(e) => {
             eprintln!("Error generating token: {}", e);
@@ -120,8 +122,6 @@ fn ks_count() -> String {
 // TODO: already done by `jsonwebtoken` but need to have tests:
 //  --> Resource servers MUST reject tokens signed with an unsupported algorithm
 //  --> Unsigned access tokens MUST be rejected
-// TODO: `aud` Vec<String> and String both work correctly
-// TODO: instantiate from environment
 
 #[test]
 fn keyserver_works() {
@@ -143,13 +143,97 @@ fn keyserver_works() {
 #[test]
 fn it_works() {
     let claims = Claims::default();
-    let validator_options = ValidatorOptions::default();
-
     let generator = Generator::default();
-    let mut validator = Validator::new(validator_options);
+    let mut validator = Validator::new(ValidatorOptions::default());
 
     let token_data = val_token(&mut validator, gen_token(&generator, &claims), &vec!["service01"]);
     assert_eq!(claims, token_data.claims);
+}
+
+#[test]
+fn instantiates_from_environment() {
+    let claims = Claims::default();
+
+    // Setup environment for the validator.
+    env::set_var("ASAP_SERVER_AUDIENCE", "resource_server_audience");
+    env::set_var("ASAP_KEYSERVER_URL", KS_URL);
+    env::set_var("ASAP_FALLBACK_KEYSERVER_URL", KS_URL);
+    // Setup environment for the generator.
+    env::set_var("ASAP_KEY_ID", KID_01);
+    env::set_var("ASAP_PRIVATE_KEY", include_str!("../support/keys/service01/1530402390-private.pem"));
+
+    let generator = Generator::from_env();
+    let mut validator = Validator::from_env();
+    let _ = val_token::<Claims>(&mut validator, generator.token(&claims).unwrap(), &vec!["service01"]);
+
+    // Tear down environment.
+    env::remove_var("ASAP_SERVER_AUDIENCE");
+    env::remove_var("ASAP_KEYSERVER_URL");
+    env::remove_var("ASAP_FALLBACK_KEYSERVER_URL");
+    env::remove_var("ASAP_KEY_ID");
+    env::remove_var("ASAP_PRIVATE_KEY");
+}
+
+#[test]
+fn generator_checks_claims_are_valid() {
+    let mut generator = Generator::default();
+    generator.validate_claims = true;
+
+    // Default claims struct.
+    let c = Claims::default();
+
+    // Helper to easily re-use a `String`.
+    let o = |s: &str| s.to_owned();
+
+    // Should pass with default Claims struct.
+    assert!(generator.token(&c).is_ok());
+
+    // Should fail if `iss` claim doesn't match the start of the `kid`:
+    let bad_iss = Claims { iss: String::from("foo"), iat: c.iat, exp: c.exp, aud: o(&c.aud), jti: o(&c.jti) };
+    assert!(generator.token(&bad_iss).is_err());
+    assert!(generator.validate_claims(&bad_iss).is_err());
+
+    // Should fail without an `iss` claim:
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct ClaimsNoIss { iat: i64, exp: i64, aud: String, jti: String }
+    let no_iss = ClaimsNoIss { iat: c.iat, exp: c.exp, aud: o(&c.aud), jti: o(&c.jti) };
+    assert!(generator.token(&no_iss).is_err());
+    assert!(generator.validate_claims(&no_iss).is_err());
+
+    // Should fail without an `exp` claim:
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct ClaimsNoExp { iat: i64, iss: String, aud: String, jti: String }
+    let no_exp = ClaimsNoExp { iat: c.iat, iss: o(&c.iss), aud: o(&c.aud), jti: o(&c.jti) };
+    assert!(generator.token(&no_exp).is_err());
+    assert!(generator.validate_claims(&no_exp).is_err());
+
+    // Should fail without an `iat` claim:
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct ClaimsNoIat { exp: i64, iss: String, aud: String, jti: String }
+    let no_iat = ClaimsNoIat { exp: c.exp, iss: o(&c.iss), aud: o(&c.aud), jti: o(&c.jti) };
+    assert!(generator.token(&no_iat).is_err());
+    assert!(generator.validate_claims(&no_iat).is_err());
+
+    // Should fail without an `jti` claim:
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct ClaimsNoJti { iat: i64, exp: i64, iss: String, aud: String }
+    let no_jti = ClaimsNoJti { iat: c.iat, exp: c.exp, iss: o(&c.iss), aud: o(&c.aud) };
+    assert!(generator.token(&no_jti).is_err());
+    assert!(generator.validate_claims(&no_jti).is_err());
+
+    // Should fail without an `aud` claim:
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct ClaimsNoAud { iat: i64, exp: i64, iss: String, jti: String }
+    let no_aud = ClaimsNoAud { iat: c.iat, exp: c.exp, iss: o(&c.iss), jti: o(&c.jti) };
+    assert!(generator.token(&no_aud).is_err());
+    assert!(generator.validate_claims(&no_aud).is_err());
+
+    // Should fail if `exp` - `iat` is greater than one hour:
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct ClaimsBadLifespan { iat: i64, exp: i64, iss: String, aud: String, jti: String }
+    let bad_lifespan = ClaimsBadLifespan { iat: c.iat, exp: c.iat + 3601, iss: o(&c.iss), aud: o(&c.aud), jti: o(&c.jti) };
+    assert!(generator.token(&bad_lifespan).is_err());
+    assert!(generator.validate_claims(&bad_lifespan).is_err());
 }
 
 #[test]
@@ -159,7 +243,7 @@ fn validates_nbf_is_after_current_time() {
     let mut validator = Validator::new(ValidatorOptions::default());
 
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    struct ClaimsWithNBF {
+    struct ClaimsWithNbf {
         iss: String,
         nbf: i64,
         exp: i64,
@@ -168,7 +252,7 @@ fn validates_nbf_is_after_current_time() {
         jti: String
     }
 
-    let mut claims_with_nbf = ClaimsWithNBF {
+    let mut claims_with_nbf = ClaimsWithNbf {
         nbf: 0, // unset now, is explicitly set below
         iat: now,
         exp: now + 60,
@@ -179,14 +263,14 @@ fn validates_nbf_is_after_current_time() {
 
     // Validation should fail since `nbf` is after current time.
     claims_with_nbf.nbf = now + 30;
-    match validator.decode::<ClaimsWithNBF>(generator.generate(&claims_with_nbf).unwrap(), &vec!["service01"]) {
+    match validator.decode::<ClaimsWithNbf>(generator.token(&claims_with_nbf).unwrap(), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert!(format!("{}", e).starts_with("Immature jwt signature"))
     }
 
     // Validation should succeed since `nbf` is before current time.
     claims_with_nbf.nbf = now - 30;
-    let _ = val_token::<ClaimsWithNBF>(&mut validator, generator.generate(&claims_with_nbf).unwrap(), &vec!["service01"]);
+    let _ = val_token::<ClaimsWithNbf>(&mut validator, generator.token(&claims_with_nbf).unwrap(), &vec!["service01"]);
 }
 
 #[test]
@@ -200,14 +284,14 @@ fn validates_unset_nbf_is_after_current_time() {
 
     // Validation should fail since `nbf` (defaulting to `iat`) is after current time.
     claims.iat = now + 30;
-    match validator.decode::<Claims>(generator.generate(&claims).unwrap(), &vec!["service01"]) {
+    match validator.decode::<Claims>(generator.token(&claims).unwrap(), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert!(format!("{}", e).starts_with("Immature jwt signature"))
     }
 
     // Validation should succeed since `nbf` (defaulting to `iat`) is before current time.
     claims.iat = now - 30;
-    let _ = val_token::<Claims>(&mut validator, generator.generate(&claims).unwrap(), &vec!["service01"]);
+    let _ = val_token::<Claims>(&mut validator, generator.token(&claims).unwrap(), &vec!["service01"]);
 }
 
 #[test]
@@ -220,14 +304,14 @@ fn validates_exp_is_before_current_time() {
 
     // Validation should fail since `exp` is before current time.
     claims.exp = now - 30;
-    match validator.decode::<Claims>(generator.generate(&claims).unwrap(), &vec!["service01"]) {
+    match validator.decode::<Claims>(generator.token(&claims).unwrap(), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert!(format!("{}", e).starts_with("Expired jwt signature"))
     }
 
     // Validation should fail since `exp` is after current time.
     claims.exp = now + 30;
-    let _ = val_token::<Claims>(&mut validator, generator.generate(&claims).unwrap(), &vec!["service01"]);
+    let _ = val_token::<Claims>(&mut validator, generator.token(&claims).unwrap(), &vec!["service01"]);
 }
 
 #[test]
@@ -243,12 +327,12 @@ fn validates_if_max_lifespan_is_exceeded() {
     // Validation should succeed since `max_lifespan` is below hard limit.
     claims.iat = now;
     claims.exp = now + 60;
-    let _ = val_token::<Claims>(&mut validator, generator.generate(&claims).unwrap(), &vec!["service01"]);
+    let _ = val_token::<Claims>(&mut validator, generator.token(&claims).unwrap(), &vec!["service01"]);
 
     // Validation should fail since `max_lifespan` is above hard limit.
     claims.iat = now;
     claims.exp = now + 3601;
-    match validator.decode::<Claims>(generator.generate(&claims).unwrap(), &vec!["service01"]) {
+    match validator.decode::<Claims>(generator.token(&claims).unwrap(), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "Token contained a lifespan greater than the \
             `max_lifespan` (hard limit of 3600 seconds)")
@@ -268,12 +352,12 @@ fn validates_if_custom_max_lifespan_is_exceeded() {
     // Validation should succeed since `max_lifespan` is below custom limit.
     claims.iat = now;
     claims.exp = now + 30;
-    let _ = val_token::<Claims>(&mut validator, generator.generate(&claims).unwrap(), &vec!["service01"]);
+    let _ = val_token::<Claims>(&mut validator, generator.token(&claims).unwrap(), &vec!["service01"]);
 
     // Validation should fail since `max_lifespan` is above custom limit.
     claims.iat = now;
     claims.exp = now + 120;
-    match validator.decode::<Claims>(generator.generate(&claims).unwrap(), &vec!["service01"]) {
+    match validator.decode::<Claims>(generator.token(&claims).unwrap(), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "Token contained a lifespan greater than the \
             `max_lifespan` (hard limit of 3600 seconds)")
@@ -323,12 +407,12 @@ fn validates_if_encounters_unrecognized_audience_as_vec() {
 
     // Should succeed since claims vec contains `"resource_server_audience"`.
     claims.aud = vec![String::from("foo"), String::from("resource_server_audience")];
-    let token = generator.generate(&claims).unwrap();
+    let token = generator.token(&claims).unwrap();
     let _ = val_token::<ClaimsWithAUDAsVec>(&mut validator, token, &vec!["service01"]);
 
     // Should fail since audience does not contain resource server's audience.
     claims.aud = vec![String::from("foo"), String::from("bar")];
-    let token = generator.generate(&claims).unwrap();
+    let token = generator.token(&claims).unwrap();
     match validator.decode::<ClaimsWithAUDAsVec>(token, &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "Resource server audience not found in `aud` claims of \
@@ -382,7 +466,7 @@ fn iss_is_assumed_if_sub_is_undefined() {
     let generator = Generator::default();
     let mut validator = Validator::new(ValidatorOptions::default());
 
-    let token_with_sub = generator.generate(&claims_with_sub).unwrap();
+    let token_with_sub = generator.token(&claims_with_sub).unwrap();
     let token_without_sub = gen_token(&generator, &claims_without_sub);
 
     // Look for tokens with the following subjects only.
@@ -465,7 +549,7 @@ fn it_fails_with_wrong_private_key() {
     let mut generator = Generator::default();
 
     // Give the wrong `private_key` for the `kid` used.
-    generator.private_key = PRIVATE_KEY_02;
+    generator.private_key = PRIVATE_KEY_02.to_vec();
     let mut validator = Validator::new(ValidatorOptions::default());
 
     match validator.decode::<Claims>(gen_token(&generator, &claims), &vec!["service01"]) {

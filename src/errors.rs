@@ -1,3 +1,4 @@
+use jwt;
 use std::result::{Result as StdResult};
 use failure::{Error, SyncFailure};
 
@@ -24,4 +25,49 @@ impl<T, E> ResultExt<T, E> for StdResult<T, E> {
     {
         self.map_err(SyncFailure::new)
     }
+}
+
+// The types of errors a Validator may encounter.
+#[derive(Fail, Debug)]
+pub enum ValidatorError {
+    #[fail(display = "JWT header did not contain a `kid` claim: {:?}", _0)]
+    NoKIDFound(jwt::Header),
+
+    #[fail(display = "JWT header did not contain a valid `kid` claim. As per \
+        ASAP spec, the `kid` claim must start with \"$iss/\" where $iss is the \
+        issuer (kid: {:?}, iss: {:?})", _0, _1)]
+    InvalidKID(String, String),
+
+    #[fail(display = "Received `None` when fetching from cache")]
+    CacheError,
+
+    #[fail(display = "Failed to retrieve public key from keyserver")]
+    KeyserverError,
+
+    #[fail(display = "Expired item: {:?}", _0)]
+    ExpiredCache(String),
+
+    #[fail(display = "Token contained a lifespan greater than the `max_lifespan` \
+        (hard limit of 3600 seconds)")]
+    InvalidLifespan,
+
+    #[fail(display = "Immature jwt signature, nbf: {:?} exp: {:?}", _0, _1)]
+    ImmatureSignature(i64, i64),
+
+    #[fail(display = "Expired jwt signature, nbf: {:?} exp: {:?}", _0, _1)]
+    ExpiredSignature(i64, i64),
+
+    #[fail(display = "Duplicate `jti` encountered: {:?}", _0)]
+    DuplicateJTI(String),
+
+    #[fail(display = "Required claim not found in token: {:?}", _0)]
+    ClaimNotFound(String),
+
+    #[fail(display = "Resource server audience not found in `aud` claims of \
+        token {:?}", _0)]
+    UnrecognisedAudience(Vec<String>),
+
+    #[fail(display = "Unknown or unauthorized subject {:?}. The `sub` claim \
+        (or `iss`) must exist in `authorized_subjects` {:?}", _0, _1)]
+    UnauthorizedSubject(String, Vec<String>)
 }
