@@ -3,11 +3,10 @@ use std::env;
 use std::cmp::{min, max};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime};
-use std::result::{Result as StdResult};
 use jwt::{self, TokenData};
 use serde::de::DeserializeOwned;
 use serde_json::value::{from_value, Value};
-use serde_json::{self, Map};
+use serde_json::Map;
 use chrono::Utc;
 use reqwest;
 
@@ -519,12 +518,11 @@ impl Validator {
 // strings) from a claims map.
 // Always returns the `aud` claims as a `Vec<String>`.
 fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String>> {
-    if let Some(aud) = claims.get("aud") {
-        let as_string: StdResult<String, serde_json::Error> = from_value(aud.clone());
-        if as_string.is_ok() {
-            Ok(vec![as_string.unwrap()])
+    if let Some(value) = claims.get("aud") {
+        if value.is_array() {
+            Ok(from_value::<Vec<String>>(value.clone())?)
         } else {
-            Ok(from_value::<Vec<String>>(aud.clone())?)
+            Ok(vec![from_value::<String>(value.clone())?])
         }
     } else {
         Err(ValidatorError::ClaimNotFound("aud".to_string()).into())
