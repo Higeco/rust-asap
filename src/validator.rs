@@ -295,8 +295,7 @@ impl Validator {
             response.read_to_end(&mut public_key)?;
             Ok(public_key)
         } else {
-            // TODO: add request error context here
-            Err(ValidatorError::KeyserverError.into())
+            Err(ValidatorError::KeyserverError(response.status()).into())
         }
     }
 
