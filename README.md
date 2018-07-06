@@ -1,25 +1,33 @@
 # ASAP for Rust
 
+[![crates.io](https://img.shields.io/crates/v/asap.svg)](https://crates.io/crates/asap)
+
 This is a rust library for generating and validating ASAP tokens. It provides options for doing so that are compliant with the [ASAP specification](https://s2sauth.bitbucket.io/spec/).
 
-## Installation and Usage
+## Usage
 
-This crate currently depends on a valid installation of `openssl`. See the [`openssl` crate's repo](https://github.com/sfackler/rust-openssl) for more installation details relating to `openssl`. 
-It depends on `openssl` in order to convert a PEM-encoded private key to DER when instantiating from environment variables (see [`Generator::from_env()`](./src/generator.rs)).
-
-Other than that, this crate simply provides an ASAP `Generator` and an ASAP `Validator`, which generate and validate ASAP tokens according [to the specification](https://s2sauth.bitbucket.io/spec/).
+### Installation
 
 To install, add the following lines to your `Cargo.toml`:
 
 ```toml
-asap = "1"
+asap = "0.2"
 # These crates are required for defining your own `Claims` struct (which needs
 # to be serialised into the token).
 serde_derive = "1"
 serde = "1"
 ```
 
+### Documentation
+
 And see [the documentation and API](https://docs.rs/asap) which should be straightforward enough for anything you'd need.
+
+### Requirements
+
+This crate currently depends on a valid installation of `openssl`. See the [`openssl` crate's repo](https://github.com/sfackler/rust-openssl) for more installation details relating to `openssl`. 
+It depends on `openssl` in order to convert a PEM-encoded private key to DER when instantiating from environment variables (see [`Generator::from_env()`](./src/generator.rs)).
+
+Other than that, this crate simply provides an ASAP `Generator` and an ASAP `Validator`, which generate and validate ASAP tokens according [to the specification](https://s2sauth.bitbucket.io/spec/).
 
 ## Development/Testing
 
@@ -39,6 +47,13 @@ cargo run -p keyserver
 # In a different shell, run the tests serially:
 RUST_TEST_THREADS=1 cargo test
 ```
+
+## References
+
+* ASAP Spec: https://s2sauth.bitbucket.io/spec/
+* JWT Spec: https://tools.ietf.org/html/rfc7519
+* JWS Spec: https://tools.ietf.org/html/rfc7515
+
 ## License
 
 [MIT](./LICENSE.md)

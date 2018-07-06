@@ -4,7 +4,7 @@ members = ["support/keyserver"]
 [package]
 name = "asap"
 readme = "README.md"
-version = "0.2.0"
+version = "0.2.1"
 license = "MIT"
 authors = ["acheronfail <acheronfail@gmail.com>"]
 keywords = ["asap", "jwt", "api", "token", "authorisation"]
@@ -13,11 +13,7 @@ repository = "https://bitbucket.org/acheronfail/rust-asap/"
 description = "An implementation of ASAP for rust."
 
 [dependencies]
-# We use a fork of `jsonwebtoken - with the smallest change:
-# It now returns the `Map<String, Value>` of the token's claims.
-# See: https://github.com/Keats/jsonwebtoken/issues/53
-asap_deps_jsonwebtoken = "4.0.1-dev"
-# jsonwebtoken = "4"
+jsonwebtoken = "4"
 serde = "1"
 serde_json = "1"
 serde_derive = "1"

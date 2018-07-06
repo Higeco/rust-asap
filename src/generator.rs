@@ -1,3 +1,52 @@
+//! This module contains all things relating to the generation of ASAP tokens.
+//! Use this module if you need to generate ASAP tokens or authorisation headers
+//! for outgoing requests.
+//!
+//! ```rust
+//! # extern crate asap;
+//! # extern crate serde;
+//! # extern crate chrono;
+//! # #[macro_use] extern crate serde_derive;
+//! #
+//! # use asap::generator::Generator;
+//! # use serde::de::DeserializeOwned;
+//! # use chrono::Utc;
+//! #
+//! # // Your jwt claims that will be encoded in the token, this example contains
+//! # // the minimum required claims that the ASAP spec requires:
+//! # #[derive(Debug, Serialize, Deserialize, PartialEq)]
+//! # struct MyClaims {
+//! #     iss: String,
+//! #     jti: String,
+//! #     iat: i64,
+//! #     exp: i64,
+//! #     aud: String, // or `Vec<String>`
+//! # }
+//! #
+//! # let now = Utc::now().timestamp();
+//! # let claims = MyClaims {
+//! #     iss: String::from("service01"),
+//! #     exp: now + 3000,
+//! #     iat: now,
+//! #     aud: String::from("resource_server_audience"),
+//! #     jti: String::from("foobar")
+//! # };
+//! #
+//! # // The `kid` of the public key in your keyserver.
+//! # let kid = String::from("service01/my-key-id");
+//! # // The `private_key` used to sign each token.
+//! # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
+//! #
+//! let generator = Generator::new(kid, private_key);
+//!
+//! // Authorization tokens: "eyJ0eXAiOiJKV..."
+//! generator.token(&claims).unwrap();
+//! // Authorization headers: "Bearer eyJ0eXAiOiJKV..."
+//! generator.auth_header(&claims).unwrap();
+//! // Optionally check `Claims` struct for ASAP compliance:
+//! generator.validate_claims(&claims).unwrap();
+//! ```
+
 use jwt;
 use std::env;
 use serde::ser::Serialize;
@@ -9,6 +58,13 @@ use util::{extract_claim, extract_aud_from_claims};
 use errors::{Result, ResultExt, ValidatorError};
 
 /// An ASAP generator.
+///
+/// The generator can:
+///
+/// * Generate ASAP tokens and pre-formatted Authorization headers.
+/// * Be created from environment variables.
+/// * Be configured to perform automatic validation of your custom `Claims`
+///     struct if you want (it's disabled by default).
 ///
 /// ```rust
 /// # extern crate asap;
@@ -105,8 +161,8 @@ impl Generator {
     /// Instantiates a generator from the environment. Requires that the
     /// following environment variables be defined:
     ///
-    /// * ASAP_KEY_ID: the key id of the public key in the keyserver
-    /// * ASAP_PRIVATE_KEY: the private key used to sign the token. The private
+    /// * `"ASAP_KEY_ID"`: the key id of the public key in the keyserver
+    /// * `"ASAP_PRIVATE_KEY"`: the private key used to sign the token. The private
     ///     key must be in the `.pem` format.
     ///
     /// This method uses `openssl` to convert the private key from `.pem` to

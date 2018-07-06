@@ -96,6 +96,7 @@
 //!     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
 //!     resource_server_audience: String::from("my-server"),
 //!     validate_jti: false,
+//!     validate_kid: true,
 //!     cache_duration: None
 //! });
 //!
@@ -109,7 +110,7 @@
 //!     jti: String,
 //! }
 //!
-//! let asap_token = "<your-token-here>".to_string();
+//! let asap_token = "<your-token-here>";
 //! let authorized_subjects = vec!["list", "of", "authorized", "subjects"];
 //!
 //! match validator.decode::<MyClaims>(asap_token, &authorized_subjects) {
@@ -139,15 +140,19 @@
 
 // TODO: have a predefined "claims" mod that assists in creating claims?
 
+#![feature(test)]
+#[cfg(test)] extern crate test;
+
 extern crate serde;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
-extern crate asap_deps_jsonwebtoken as jwt;
+extern crate jsonwebtoken as jwt;
 extern crate reqwest;
 extern crate chrono;
 extern crate openssl;
 extern crate failure;
 #[macro_use] extern crate failure_derive;
+
 
 mod util;
 mod errors;

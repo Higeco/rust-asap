@@ -1,12 +1,58 @@
+//! This module contains everything you need in order to validate and verify
+//! the authenticity of an incoming ASAP token.
+//!
+//! ```rust
+//! # extern crate asap;
+//! # extern crate serde;
+//! # extern crate chrono;
+//! # #[macro_use] extern crate serde_derive;
+//! #
+//! # use asap::validator::{Validator, ValidatorOptions};
+//! # use serde::de::DeserializeOwned;
+//! # use chrono::Utc;
+//! #
+//! # let now = Utc::now().timestamp();
+//! #
+//! # // Construct the ASAP validator:
+//! # let mut validator = Validator::new(ValidatorOptions {
+//! #     leeway: None,
+//! #     max_lifespan: None,
+//! #     keyserver_url: String::from("http://my-keyserver/"),
+//! #     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
+//! #     resource_server_audience: String::from("my-server"),
+//! #     validate_jti: false,
+//! #     validate_kid: true,
+//! #     cache_duration: None
+//! # });
+//! #
+//! # // Your expected jwt claims:
+//! # #[derive(Debug, Serialize, Deserialize, PartialEq)]
+//! # struct MyClaims {
+//! #     iat: i64,
+//! #     exp: i64,
+//! #     iss: String,
+//! #     aud: String, // or Vec<String>
+//! #     jti: String,
+//! # }
+//! #
+//! # let asap_token = "<your-token-here>";
+//! #
+//! match validator.decode::<MyClaims>(asap_token, &vec!["authorized", "subjects"]) {
+//!     Ok(token_data) => println!("claims {:?}", token_data.claims),
+//!     Err(e) => eprintln!("error validation token/invalid token: {:?}", e)
+//! }
+//! ```
+
 use std::io::Read;
 use std::env;
 use std::cmp::{min, max};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime};
 use jwt::{self, TokenData};
+use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::value::Value;
-use serde_json::Map;
+use serde_json::{Map, to_string, from_str};
 use chrono::Utc;
 use reqwest;
 
@@ -39,6 +85,10 @@ pub struct ValidatorOptions {
     /// If this is set, then the validator will reject tokens who have a `jti`
     /// claim that the validator has seen before.
     pub validate_jti: bool,
+    /// Whether or not the validator should check that the `kid` starts with
+    /// `"$iss/"` where `$iss` is the issuer. Setting this to `true` is
+    /// recommended.
+    pub validate_kid: bool,
     /// The duration of how long the validator should cache public keys fetched
     /// from the keyserver. Defaults to 10 minutes.
     pub cache_duration: Option<Duration>
@@ -51,9 +101,18 @@ pub struct ValidatorOptions {
 /// [to the specification](https://s2sauth.bitbucket.io/spec/) (see the `decode`
 /// method).
 ///
-/// You can (optionally) set the validator to check for duplicate `jti` nonces
-/// seen in requests by using `ValidatorOptions.validate_jti = true`. This means
-/// that any token whose `claims.jti` has been seen before will be rejected.
+/// The `Validator` expects a  keyserver from which to retrieve public keys,
+/// and can:
+///
+/// * (optionally) check for duplicate `jti` nonces seen in requests by using
+///     `ValidatorOptions.validate_jti = true`. This means that any token whose
+///     `claims.jti` has been seen before will be rejected.
+/// * set a `leeway` which is used in calculating the token's lifespan and
+///     expiry. Use this if you need to combat internal clock drift between
+///     clients/servers and you have short-lived tokens.
+/// * cache public keys in order to speed up validation of tokens.
+/// * set a shorter `max_lifespan` and reject tokens whose lifespan exceeds the
+///     set limit.
 ///
 /// ```rust
 /// # extern crate asap;
@@ -75,6 +134,7 @@ pub struct ValidatorOptions {
 ///     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
 ///     resource_server_audience: String::from("my-server"),
 ///     validate_jti: false,
+///     validate_kid: true,
 ///     cache_duration: None
 /// });
 ///
@@ -88,7 +148,7 @@ pub struct ValidatorOptions {
 ///     jti: String,
 /// }
 ///
-/// let asap_token = "<your-token-here>".to_string();
+/// let asap_token = "<your-token-here>";
 /// let authorized_subjects = vec!["list", "of", "authorized", "subjects"];
 ///
 /// match validator.decode::<MyClaims>(asap_token, &authorized_subjects) {
@@ -113,6 +173,11 @@ pub struct ValidatorOptions {
 /// }
 /// ```
 pub struct Validator {
+    /// Whether or not the validator should check for duplicate `jti` nonces.
+    pub validate_jti: bool,
+    /// Whether or not the validator should check that the `kid` starts with
+    /// `"$iss/"` where `$iss` is the issuer.
+    pub validate_kid: bool,
     /// The actual jwt validator (from the `jsonwebtoken` crate). This is used
     /// to decode the token and verify its signature.
     jwt_validator: jwt::Validation,
@@ -130,14 +195,12 @@ pub struct Validator {
     keyserver_url: String,
     /// The fallback keyserver URL. Must have a trailing "/".
     fallback_keyserver_url: String,
-    /// Whether or not the validator should check for duplicate `jti` nonces.
-    pub validate_jti: bool,
     /// A hash-map used to store and check seen `jti` nonces.
     jti_seen: HashSet<String>,
     /// A hash-map used for simple key-caching.
-    cache: HashMap<String, (SystemTime, Vec<u8>)>,
+    key_cache: HashMap<String, (SystemTime, Vec<u8>)>,
     /// The duration each cached key is valid before it's fetched again.
-    cache_duration: Duration
+    key_cache_duration: Duration
 }
 
 impl Validator {
@@ -166,20 +229,21 @@ impl Validator {
             fallback_keyserver_url: opts.fallback_keyserver_url,
             resource_server_audience: opts.resource_server_audience,
 
+            validate_kid: opts.validate_kid,
             validate_jti: opts.validate_jti,
             jti_seen: HashSet::new(),
 
-            cache: HashMap::new(),
-            cache_duration: opts.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION)
+            key_cache: HashMap::new(),
+            key_cache_duration: opts.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION)
         }
     }
 
     /// Instantiates a validator from the environment. Requires that the
     /// following environment variables be defined:
     ///
-    /// * ASAP_SERVER_AUDIENCE: the resource identifier of the validator
-    /// * ASAP_KEYSERVER_URL: the URL of the keyserver, must end in a "/".
-    /// * ASAP_FALLBACK_KEYSERVER_URL: the URL of the fallback keyserver, must
+    /// * `"ASAP_SERVER_AUDIENCE"`: the resource identifier of the validator
+    /// * `"ASAP_KEYSERVER_URL"`: the URL of the keyserver, must end in a "/".
+    /// * `"ASAP_FALLBACK_KEYSERVER_URL"`: the URL of the fallback keyserver, must
     ///     end in a "/".
     ///
     /// TODO: other env vars to set other parts of validator?
@@ -194,6 +258,7 @@ impl Validator {
             keyserver_url: get_env_var("ASAP_KEYSERVER_URL"),
             fallback_keyserver_url: get_env_var("ASAP_FALLBACK_KEYSERVER_URL"),
             resource_server_audience: get_env_var("ASAP_SERVER_AUDIENCE"),
+            validate_kid: true,
             validate_jti: false,
             cache_duration: None
         })
@@ -201,9 +266,9 @@ impl Validator {
 
     // Attempt to fetch the public key from cache.
     fn get_key_from_cache(&mut self, kid: &str) -> Result<Vec<u8>> {
-        if let Some((when, public_key)) = self.cache.get(kid) {
+        if let Some((when, public_key)) = self.key_cache.get(kid) {
             let time_since = when.elapsed()?;
-            if time_since <= self.cache_duration {
+            if time_since <= self.key_cache_duration {
                 Ok(public_key.to_vec())
             } else {
                 Err(ValidatorError::ExpiredCache(String::from(kid)).into())
@@ -231,7 +296,7 @@ impl Validator {
     // the key from the keyserver if the key isn't cached.
     fn get_public_key(&mut self, kid: &str) -> Result<Vec<u8>> {
         // Fetch key from cache if there's a key.
-        if self.cache.contains_key(kid) {
+        if self.key_cache.contains_key(kid) {
             // Extra scope here since `self.get_key_from_cache` borrows the
             // internal cache mutably. We won't be able to remove anything from
             // the cache if this ref is still alive.
@@ -245,7 +310,7 @@ impl Validator {
             }
             // If there was any error fetching the key from the cache, just
             // remove the entry from cache.
-            self.cache.remove(kid);
+            self.key_cache.remove(kid);
         }
 
         // Otherwise, fetch the public key from the keyserver(s).
@@ -269,8 +334,6 @@ impl Validator {
     /// - the `aud` matching/containing `resource_server_audience`
     /// - the issuer/subject having authorisation (via `authorized_subjects`)
     ///
-    /// TODO: add in `jti` documentation when complete
-    ///
     /// ```rust
     /// # extern crate asap;
     /// # extern crate serde;
@@ -291,6 +354,7 @@ impl Validator {
     /// #     fallback_keyserver_url: String::from("http://fallback-keyserver/"),
     /// #     resource_server_audience: String::from("my-server"),
     /// #     validate_jti: false,
+    /// #     validate_kid: true,
     /// #     cache_duration: None
     /// # });
     /// #
@@ -304,7 +368,7 @@ impl Validator {
     /// #     jti: String,
     /// # }
     /// #
-    /// let asap_token = "<your-token-here>".to_string();
+    /// let asap_token = "<your-token-here>";
     /// let authorized_subjects = vec!["list", "of", "authorized", "subjects"];
     ///
     /// match validator.decode::<MyClaims>(asap_token, &authorized_subjects) {
@@ -320,11 +384,11 @@ impl Validator {
     ///     Err(e) => eprintln!("{:?}", e)
     /// }
     /// ```
-    pub fn decode<T>(&mut self, token: String, authorized_subjects: &Vec<&str>) -> Result<TokenData<T>>
-        where T: DeserializeOwned
+    pub fn decode<T>(&mut self, token: &str, authorized_subjects: &Vec<&str>) -> Result<TokenData<T>>
+        where T: DeserializeOwned + Serialize
     {
         // First, decode the header.
-        let header = jwt::decode_header(&token).sync()?;
+        let header = jwt::decode_header(token).sync()?;
 
         // Extract `kid` (the public key id) from jwt header.
         let kid = if header.kid.is_some() {
@@ -337,13 +401,23 @@ impl Validator {
         let public_key = self.get_public_key(&kid)?;
 
         // Decode the token (this also validates its signature).
-        let data = jwt::decode::<T>(&token, &public_key, &self.jwt_validator).sync()?;
+        let data = jwt::decode::<T>(token, &public_key, &self.jwt_validator).sync()?;
 
         // Ensure the token is valid (according to the ASAP specification).
-        self.validate(&kid, &data.claims_map, authorized_subjects)?;
+        //
+        // HACK: at the moment we're doing this messy serialise-deserialise hack
+        // since `jsonwebtoken` doesn't provide us with a way of obtaining a
+        // `Map<String, Value>` of the claims struct.
+        // Benchmarks show that this has no noticible performance impact.
+        //
+        // See: https://github.com/Keats/jsonwebtoken/issues/53
+        self.validate(&kid, &from_str(&to_string(&data.claims)?)?, authorized_subjects)?;
 
-        // If everything looks good, then store the public key in the cache.
-        self.cache.insert(kid, (SystemTime::now(), public_key));
+        // If everything looks good, and the key is not yet cached, then store
+        // the public key in the cache.
+        if !self.key_cache.contains_key(&kid) {
+            self.key_cache.insert(kid, (SystemTime::now(), public_key));
+        }
 
         // Return the decoded token.
         Ok(data)
@@ -394,7 +468,7 @@ impl Validator {
         // if the `kid` string starts with `$iss/` (where $iss is the value of
         // the `iss` claim) and, in affirmative case, accept that as proof of
         // ownership of the key by the issuer.
-        if !kid.starts_with(&format!("{}/", &iss)) {
+        if self.validate_kid && !kid.starts_with(&format!("{}/", &iss)) {
             return Err(ValidatorError::InvalidKID(kid.to_string(), iss.to_string()).into());
         }
 
