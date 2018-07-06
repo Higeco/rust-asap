@@ -2,12 +2,14 @@
 
 [![crates.io](https://img.shields.io/crates/v/asap.svg)](https://crates.io/crates/asap)
 
+[Documentation](https://docs.rs/asap).
+
 This is a rust library for generating and validating ASAP tokens. It provides options for doing so that are compliant with the [ASAP specification](https://s2sauth.bitbucket.io/spec/).
 
 **Why should you use this library?**
 
 * Do you want super-fast ASAP token generation (1 token/millisecond)?
-* Do you want ultra-fast ASAP token validation (1 token/_nanosecond_)?
+* Do you want ultra-fast ASAP token validation (5 tokens/millisecond)?
 * Do you want to bring your own token `Claims` in whatever format you'd like?
 * Do you want to use ASAP with one of the greatest languages ever?
 
