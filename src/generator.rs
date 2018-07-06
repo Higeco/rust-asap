@@ -111,12 +111,16 @@ pub struct Generator {
     /// Key ID. The identifier of the key used to sign the token in the format
     /// `"issuer/key-id"` where issuer matches `claims.iss`.
     ///
-    /// FROM SPEC:
-    /// “kid”: key identifier, as defined by JWS, with the difference that here it
+    /// From spec:
+    ///
+    /// `kid`: key identifier, as defined by JWS, with the difference that here it
     /// is mandatory. The key identifier MUST be a String that is a non-empty sequence
-    /// of non-empty substrings joined with the forward slash character (“/”).
-    /// None of the substrings can be “.” or “..”. As a further restriction, the
-    /// key identifier must match the following Java regular expression: ^[\w.\-\+/]*$.
+    /// of non-empty substrings joined with the forward slash character (`/`).
+    /// None of the substrings can be `.` or `..`. As a further restriction, the
+    /// key identifier must match the following Java regular expression: `^[\w.\-\+/]*$`.
+    ///
+    /// NOTE: For the sake of simplicity, at this moment this library does not
+    /// ensure that the `kid` matches the regular expression `^[\w.\-\+/]*$`.
     pub kid: String,
     /// The private key to use when generating the token.
     /// Currently, this only supports keys in the `.der` format.
@@ -144,9 +148,6 @@ pub struct Generator {
     pub validate_claims: bool
 }
 
-// TODO: provide a predefined claims struct (both as a default and as an example)
-// --> provide some helper methods to use it
-// TODO: (optionally) validate the claims struct by checking its fields?
 impl Generator {
     /// Creates an ASAP token generator which will generate tokens with the given
     /// `kid` and sign them with the given `private_key`.

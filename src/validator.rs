@@ -246,8 +246,16 @@ impl Validator {
     /// * `"ASAP_FALLBACK_KEYSERVER_URL"`: the URL of the fallback keyserver, must
     ///     end in a "/".
     ///
-    /// TODO: other env vars to set other parts of validator?
-    /// TODO: example
+    /// ```rust
+    /// use std::env;
+    /// use asap::validator::Validator;
+    ///
+    /// env::set_var("ASAP_SERVER_AUDIENCE", "resource_server_audience");
+    /// env::set_var("ASAP_KEYSERVER_URL", "http://keyserver.net/");
+    /// env::set_var("ASAP_FALLBACK_KEYSERVER_URL", "http://fallback-keyserver.net/");
+    ///
+    /// let validator = Validator::from_env();
+    /// ```
     pub fn from_env() -> Validator {
         let get_env_var = |x| env::var(x)
             .expect(&format!("Could not find '{:?}' environment variable", x));
@@ -437,10 +445,6 @@ impl Validator {
 
     // Validates the JWT token as per the ASAP specification.
     // The following claims are mandatory: `iss`, `exp`, `iat`, `aud` and `jti`.
-    //
-    // TODO: (review) make parts of the validation optional/toggle-able perhaps?
-    //
-    // NOTE: currently using local-fork of `jsonwebtoken` for `claims_map`.
     fn validate(&mut self, kid: &str, claims: &Map<String, Value>, authorized_subjects: &Vec<&str>) -> Result<()> {
         let now = Utc::now().timestamp();
         let iss = extract_claim::<String>(claims, "iss")?;
