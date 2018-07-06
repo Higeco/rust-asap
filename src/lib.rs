@@ -142,7 +142,7 @@
 extern crate serde;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
-extern crate jsonwebtoken as jwt;
+extern crate asap_deps_jsonwebtoken as jwt;
 extern crate reqwest;
 extern crate chrono;
 extern crate openssl;
