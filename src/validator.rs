@@ -13,18 +13,6 @@
 //! #
 //! # let now = Utc::now().timestamp();
 //! #
-//! # // Construct the ASAP validator:
-//! # let mut validator = Validator::new(ValidatorOptions {
-//! #     leeway: None,
-//! #     max_lifespan: None,
-//! #     keyserver_url: String::from("http://my-keyserver/"),
-//! #     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
-//! #     resource_server_audience: String::from("my-server"),
-//! #     validate_jti: false,
-//! #     validate_kid: true,
-//! #     cache_duration: None
-//! # });
-//! #
 //! # // Your expected jwt claims:
 //! # #[derive(Debug, Serialize, Deserialize, PartialEq)]
 //! # struct MyClaims {
@@ -37,6 +25,18 @@
 //! #
 //! # let asap_token = "<your-token-here>";
 //! #
+//! # // Construct the ASAP validator:
+//! # let validator_options = ValidatorOptions {
+//! #     leeway: None,
+//! #     max_lifespan: None,
+//! #     keyserver_url: String::from("http://my-keyserver/"),
+//! #     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
+//! #     resource_server_audience: String::from("my-server"),
+//! #     validate_jti: false,
+//! #     validate_kid: true,
+//! #     cache_duration: None
+//! # };
+//! let mut validator = Validator::new(validator_options);
 //! match validator.decode::<MyClaims>(asap_token, &vec!["authorized", "subjects"]) {
 //!     Ok(token_data) => println!("claims {:?}", token_data.claims),
 //!     Err(e) => eprintln!("error validation token/invalid token: {:?}", e)
@@ -104,11 +104,11 @@ pub struct ValidatorOptions {
 /// The `Validator` expects a  keyserver from which to retrieve public keys,
 /// and can:
 ///
-/// * (optionally) check for duplicate `jti` nonces seen in requests by using
+/// * check for duplicate `jti` nonces seen in requests by using
 ///     `ValidatorOptions.validate_jti = true`. This means that any token whose
 ///     `claims.jti` has been seen before will be rejected.
 /// * set a `leeway` which is used in calculating the token's lifespan and
-///     expiry. Use this if you need to combat internal clock drift between
+///     expiry. Use this if you need to account for internal clock drift between
 ///     clients/servers and you have short-lived tokens.
 /// * cache public keys in order to speed up validation of tokens.
 /// * set a shorter `max_lifespan` and reject tokens whose lifespan exceeds the
@@ -433,8 +433,10 @@ impl Validator {
     /// Decodes the given token, returning both its claims and header.
     ///
     /// !!! WARNING !!!
-    /// This function performs NO ASAP OR SIGNATURE VALIDATION on the token. Do
-    /// not use this unless you know what you are doing.
+    ///
+    /// This function performs **_NO ASAP OR SIGNATURE VALIDATION_** on the
+    /// token. **Do not use this** unless you know what you are doing.
+    ///
     /// !!! WARNING !!!
     pub fn dangerous_unsafe_decode<T>(&mut self, token: &str) -> Result<TokenData<T>>
         where T: DeserializeOwned

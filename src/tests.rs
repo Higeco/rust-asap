@@ -568,7 +568,7 @@ fn it_fails_with_no_public_key() {
 
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Failed to retrieve public key from keyserver")
+        Err(e) => assert_eq!(format!("{}", e), "Failed to retrieve public key from keyserver: NotFound")
     }
 }
 

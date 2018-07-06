@@ -296,24 +296,27 @@ impl Generator {
     /// This is a helper method you can use to ensure your `Claims` struct is
     /// valid according [to the ASAP specification](https://s2sauth.bitbucket.io/spec/).
     ///
+    /// If you set `generator.validate_claims = true` then each time you generate
+    /// a token the generator will check the claims with this method.
+    ///
     /// This method ensures that:
     ///
+    /// - The `kid` is in the correct format (that is, it begins with `"issuer/"`).
+    /// - The difference between `exp` and `iat` does not exceed one hour.
     /// - Each of the mandatory claims are present:
-    ///     - `iss`: This String identifies the service that issues the token.
-    ///     - `iat`: The issued at time.
-    ///     - `exp`: Token expiry timestamp. If the environment can guarantee a
+    ///     - `iss`: `String`. This identifier of the service that issued the token.
+    ///     - `iat`: `i64`. The issued at time.
+    ///     - `exp`: `i64`. Token expiry timestamp. If the environment can guarantee a
     ///         good synchronisation between the internal clocks of the systems
     ///         involved in the communication, a sub-minute expire time is
-    ///         recommended. There is a hard upper limit of one hour.
-    ///     - `aud`: The audience. May be a `String` or a `Vec<String>`.
-    ///     - `jti`: Token identifier. a generated nonce value that is unique
+    ///         recommended.
+    ///     - `aud`: `String` or `Vec<String>`. The audience.
+    ///     - `jti`: `String`. Token identifier. a generated nonce value that is unique
     ///         within the temporal window of the token life time. The client
     ///         MUST ensure that there is a very low probability that at any point
     ///         in time there are more than one valid and non-expired tokens with
-    ///         the same “jti” value, considering that there may be many issuers
+    ///         the same `jti` value, considering that there may be many issuers
     ///         and many instances of the same issuer.
-    /// - The `kid` is in the correct format (that is begins with `"issuer/"`).
-    /// - The difference between `exp` and `iat` does not exceed one hour.
     ///
     /// This method **DOES NOT** perform any other checks or validations. Use
     /// this method only to test if your `Claims` struct is compliant with the
@@ -333,19 +336,21 @@ impl Generator {
     /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
     /// #
     /// # let generator = Generator::new(kid, private_key);
-    ///
+    /// #
     /// #[derive(Debug, Serialize, Deserialize, PartialEq)]
     /// struct MyCustomClaims {
     ///     jti: String,
     ///     aud: Vec<String>,
     ///     iat: i64,
     ///     exp: i64,
-    ///     extra_custom_claim: String
+    ///     extra_custom_claim: String,
+    ///     // Oh no - where's the `iss` claim?
     /// }
     ///
     /// // Here we're using `chrono`'s `Utc` module to get the current time as an
     /// // `i64`, but as long as you provide an `i64` you can use whatever you want.
     /// let now = Utc::now().timestamp();
+    ///
     /// let my_claims = MyCustomClaims {
     ///     jti: String::from("my-jti-nonce"),
     ///     aud: vec![String::from("resource-server"), String::from("another-resource-server")],
