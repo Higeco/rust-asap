@@ -186,11 +186,7 @@ impl Generator {
         let rsa = Rsa::private_key_from_pem(key.as_bytes()).unwrap();
         let private_key = rsa.private_key_to_der().unwrap();
 
-        Generator {
-            kid: get_env_var("ASAP_KEY_ID"),
-            private_key: private_key,
-            validate_claims: false
-        }
+        Generator::new(get_env_var("ASAP_KEY_ID"), private_key)
     }
 
     /// Generates an ASAP token with the given claims.

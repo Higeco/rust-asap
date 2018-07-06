@@ -65,11 +65,7 @@ impl Default for ValidatorOptions {
 
 impl Default for Generator {
     fn default() -> Generator {
-        Generator {
-            kid: String::from(KID_01),
-            private_key: PRIVATE_KEY_01.to_vec(),
-            validate_claims: false
-        }
+        Generator::new(KID_01.to_string(), PRIVATE_KEY_01.to_vec())
     }
 }
 
@@ -663,7 +659,7 @@ fn speed_of_validating_tokens(b: &mut Bencher) {
 }
 
 #[bench]
-fn speed_of_decoding_tokens_without_asap(b: &mut Bencher) {
+fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
     let claims = Claims::default();
     let generator = Generator::default();
     let token = generator.token(&claims).unwrap();

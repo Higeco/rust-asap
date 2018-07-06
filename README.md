@@ -44,8 +44,8 @@ To run the tests, perform the following:
 # Runs a simple keyserver.
 cargo run -p keyserver
 
-# In a different shell, run the tests serially:
-RUST_TEST_THREADS=1 cargo test
+# In a different shell, run the tests with the following command:
+./support/test.sh
 ```
 
 ## References
