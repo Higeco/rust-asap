@@ -4,6 +4,15 @@
 
 This is a rust library for generating and validating ASAP tokens. It provides options for doing so that are compliant with the [ASAP specification](https://s2sauth.bitbucket.io/spec/).
 
+**Why should you use this library?**
+
+* Do you want super-fast ASAP token generation (1 token/millisecond)?
+* Do you want ultra-fast ASAP token validation (1 token/_nanosecond_)?
+* Do you want to bring your own token `Claims` in whatever format you'd like?
+* Do you want to use ASAP with one of the greatest languages ever?
+
+Basically, yes. Yes, you should use this library if you want ASAP and use Rust.
+
 ## Usage
 
 ### Installation
@@ -12,8 +21,8 @@ To install, add the following lines to your `Cargo.toml`:
 
 ```toml
 asap = "0.2"
-# These crates are required for defining your own `Claims` struct (which needs
-# to be serialised into the token).
+# These crates are required for defining your own `Claims` struct which needs
+# to be serialised into the token (and deserialised out of it).
 serde_derive = "1"
 serde = "1"
 ```
