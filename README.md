@@ -8,10 +8,10 @@ This is a rust library for generating and validating ASAP tokens. It provides op
 
 **Why should you use this library?**
 
-* Do you want super-fast ASAP token generation (1 token/millisecond)?
-* Do you want ultra-fast ASAP token validation (5 tokens/millisecond)?
+* Do you want to generate 1 ASAP token/millisecond?
+* Do you want to validate 5 ASAP tokens/millisecond?
 * Do you want to bring your own token `Claims` in whatever format you'd like?
-* Do you want to use ASAP with one of the greatest languages ever?
+* Do you want/need to use ASAP with one of the greatest languages ever?
 
 Basically, yes. Yes, you should use this library if you want ASAP and use Rust.
 
