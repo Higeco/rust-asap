@@ -1,14 +1,19 @@
-use jwt;
-use reqwest;
+extern crate asap;
+extern crate chrono;
+extern crate jsonwebtoken as jwt;
+extern crate reqwest;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+
 use std::env;
 use std::time::Duration;
-use test::Bencher;
 use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
 use chrono::Utc;
 
-use super::generator::Generator;
-use super::validator::{Validator, ValidatorOptions};
+use asap::generator::Generator;
+use asap::validator::{Validator, ValidatorOptions};
 
 // A private key to use to sign the tokens.
 const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/service01/1530402390-private.der");
@@ -31,8 +36,8 @@ struct Claims {
 }
 
 /**
- * Implement the `Default` trait for commonly used structs in order to reduce
- * the boilerplate required for the tests.
+ * Defaults for commonly used structs in order to reduce the boilerplate
+ * required for the tests.
  */
 
 impl Default for Claims {
@@ -48,25 +53,21 @@ impl Default for Claims {
     }
 }
 
-impl Default for ValidatorOptions {
-    fn default() -> ValidatorOptions {
-        ValidatorOptions {
-            leeway: None,
-            max_lifespan: None,
-            resource_server_audience: String::from("resource_server_audience"),
-            keyserver_url: String::from(KS_URL),
-            fallback_keyserver_url: String::from(KS_URL),
-            validate_kid: true,
-            validate_jti: false,
-            cache_duration: None
-        }
+fn default_validator_options() -> ValidatorOptions {
+    ValidatorOptions {
+        leeway: None,
+        max_lifespan: None,
+        resource_server_audience: String::from("resource_server_audience"),
+        keyserver_url: String::from(KS_URL),
+        fallback_keyserver_url: String::from(KS_URL),
+        validate_kid: true,
+        validate_jti: false,
+        cache_duration: None
     }
 }
 
-impl Default for Generator {
-    fn default() -> Generator {
-        Generator::new(KID_01.to_string(), PRIVATE_KEY_01.to_vec())
-    }
+fn default_generator() -> Generator {
+    Generator::new(KID_01.to_string(), PRIVATE_KEY_01.to_vec())
 }
 
 /**
@@ -142,8 +143,8 @@ fn keyserver_works() {
 #[test]
 fn it_works() {
     let claims = Claims::default();
-    let generator = Generator::default();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let generator = default_generator();
+    let mut validator = Validator::new(default_validator_options());
 
     let token_data = val_token(&mut validator, &gen_token(&generator, &claims), &vec!["service01"]);
     assert_eq!(claims, token_data.claims);
@@ -175,7 +176,7 @@ fn instantiates_from_environment() {
 
 #[test]
 fn generator_checks_claims_are_valid() {
-    let mut generator = Generator::default();
+    let mut generator = default_generator();
     generator.validate_claims = true;
 
     // Default claims struct.
@@ -238,8 +239,8 @@ fn generator_checks_claims_are_valid() {
 #[test]
 fn validates_nbf_is_after_current_time() {
     let now = Utc::now().timestamp();
-    let generator = Generator::default();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let generator = default_generator();
+    let mut validator = Validator::new(default_validator_options());
 
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
     struct ClaimsWithNbf {
@@ -275,8 +276,8 @@ fn validates_nbf_is_after_current_time() {
 #[test]
 fn validates_unset_nbf_is_after_current_time() {
     let now = Utc::now().timestamp();
-    let generator = Generator::default();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let generator = default_generator();
+    let mut validator = Validator::new(default_validator_options());
 
     // The `nbf` claim will default to `iat`.
     let mut claims = Claims::default();
@@ -298,8 +299,8 @@ fn validates_exp_is_before_current_time() {
     let now = Utc::now().timestamp();
     let mut claims = Claims::default();
 
-    let generator = Generator::default();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let generator = default_generator();
+    let mut validator = Validator::new(default_validator_options());
 
     // Validation should fail since `exp` is before current time.
     claims.exp = now - 30;
@@ -316,10 +317,10 @@ fn validates_exp_is_before_current_time() {
 #[test]
 fn validates_if_max_lifespan_is_exceeded() {
     let now = Utc::now().timestamp();
-    let generator = Generator::default();
+    let generator = default_generator();
     let mut claims = Claims::default();
 
-    let mut validator_options = ValidatorOptions::default();
+    let mut validator_options = default_validator_options();
     validator_options.max_lifespan = Some(9_999_999_999); // Should clamp to hard limit
     let mut validator = Validator::new(validator_options);
 
@@ -341,10 +342,10 @@ fn validates_if_max_lifespan_is_exceeded() {
 #[test]
 fn validates_if_custom_max_lifespan_is_exceeded() {
     let now = Utc::now().timestamp();
-    let generator = Generator::default();
+    let generator = default_generator();
     let mut claims = Claims::default();
 
-    let mut validator_options = ValidatorOptions::default();
+    let mut validator_options = default_validator_options();
     validator_options.max_lifespan = Some(60);
     let mut validator = Validator::new(validator_options);
 
@@ -365,8 +366,8 @@ fn validates_if_custom_max_lifespan_is_exceeded() {
 
 #[test]
 fn validates_if_encounters_unrecognized_audience() {
-    let generator = Generator::default();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let generator = default_generator();
+    let mut validator = Validator::new(default_validator_options());
     let mut claims = Claims::default();
 
     // Should succeed since `Claims::default().aud = "resource_server_audience"`.
@@ -384,8 +385,8 @@ fn validates_if_encounters_unrecognized_audience() {
 #[test]
 fn validates_if_encounters_unrecognized_audience_as_vec() {
     let now = Utc::now().timestamp();
-    let generator = Generator::default();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let generator = default_generator();
+    let mut validator = Validator::new(default_validator_options());
 
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
     struct ClaimsWithAUDAsVec {
@@ -421,8 +422,8 @@ fn validates_if_encounters_unrecognized_audience_as_vec() {
 
 #[test]
 fn validates_if_encounters_unauthorized_subject() {
-    let generator = Generator::default();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let generator = default_generator();
+    let mut validator = Validator::new(default_validator_options());
     let mut claims = Claims::default();
 
     // Should succeed since `Claims::default().iss = "service01"`.
@@ -462,8 +463,8 @@ fn iss_is_assumed_if_sub_is_undefined() {
     };
     let claims_without_sub = Claims::default();
 
-    let generator = Generator::default();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let generator = default_generator();
+    let mut validator = Validator::new(default_validator_options());
 
     let token_with_sub = generator.token(&claims_with_sub).unwrap();
     let token_without_sub = gen_token(&generator, &claims_without_sub);
@@ -484,8 +485,8 @@ fn iss_is_assumed_if_sub_is_undefined() {
 
 #[test]
 fn validates_kid_is_owned_by_isser() {
-    let generator = Generator::default();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let generator = default_generator();
+    let mut validator = Validator::new(default_validator_options());
     let mut claims = Claims::default();
 
     // Default implementations should pass because:
@@ -506,13 +507,13 @@ fn validates_kid_is_owned_by_isser() {
 #[test]
 fn it_rejects_duplicate_jti_claims() {
     let mut claims = Claims::default();
-    let mut validator_options = ValidatorOptions::default();
+    let mut validator_options = default_validator_options();
 
     // Enable duplicate `jti` detection:
     validator_options.validate_jti = true;
     claims.jti = String::from("first-nonce");
 
-    let generator = Generator::default();
+    let generator = default_generator();
     let mut validator = Validator::new(validator_options);
 
     // First token (first `jti` seen) should be successful.
@@ -530,11 +531,11 @@ fn it_rejects_duplicate_jti_claims() {
 #[test]
 fn it_fails_with_wrong_public_key() {
     let claims = Claims::default();
-    let mut generator = Generator::default();
+    let mut generator = default_generator();
 
     // Give the wrong `kid` for the `private_key` used.
     generator.kid = String::from(KID_02);
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let mut validator = Validator::new(default_validator_options());
 
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
@@ -545,11 +546,11 @@ fn it_fails_with_wrong_public_key() {
 #[test]
 fn it_fails_with_wrong_private_key() {
     let claims = Claims::default();
-    let mut generator = Generator::default();
+    let mut generator = default_generator();
 
     // Give the wrong `private_key` for the `kid` used.
     generator.private_key = PRIVATE_KEY_02.to_vec();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let mut validator = Validator::new(default_validator_options());
 
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
@@ -560,11 +561,11 @@ fn it_fails_with_wrong_private_key() {
 #[test]
 fn it_fails_with_no_public_key() {
     let claims = Claims::default();
-    let mut generator = Generator::default();
+    let mut generator = default_generator();
 
     // Give the wrong `kid` for the private key used.
     generator.kid = String::from("not-a-kid");
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let mut validator = Validator::new(default_validator_options());
 
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
@@ -575,12 +576,12 @@ fn it_fails_with_no_public_key() {
 #[test]
 fn it_uses_the_fallback_keyserver() {
     let claims = Claims::default();
-    let mut validator_options = ValidatorOptions::default();
+    let mut validator_options = default_validator_options();
 
     // Ensure the first keyserver fails.
     validator_options.keyserver_url = String::from("http://not-a-real-server:1234/");
 
-    let generator = Generator::default();
+    let generator = default_generator();
     let mut validator = Validator::new(validator_options);
 
     let token = gen_token(&generator, &claims);
@@ -595,8 +596,8 @@ fn it_fetches_key_from_cache() {
     ks_reset();
 
     let claims = Claims::default();
-    let generator = Generator::default();
-    let mut validator = Validator::new(ValidatorOptions::default());
+    let generator = default_generator();
+    let mut validator = Validator::new(default_validator_options());
 
     // Requesting the same `kid_01` twice should only result in 1 request.
     val_token::<Claims>(&mut validator, &gen_token(&generator, &claims), &vec!["service01"]);
@@ -611,12 +612,12 @@ fn it_does_not_fetch_expired_key_from_cache() {
     ks_reset();
 
     let claims = Claims::default();
-    let mut validator_options = ValidatorOptions::default();
+    let mut validator_options = default_validator_options();
 
     // Make all tokens expire immediately.
     validator_options.cache_duration = Some(Duration::from_nanos(0));
 
-    let generator = Generator::default();
+    let generator = default_generator();
     let mut validator = Validator::new(validator_options);
 
     // The expired `kid_01` should be requested again = 2 requests.
@@ -624,67 +625,4 @@ fn it_does_not_fetch_expired_key_from_cache() {
     assert_eq!(ks_count(), "1");
     val_token::<Claims>(&mut validator, &gen_token(&generator, &claims), &vec!["service01"]);
     assert_eq!(ks_count(), "2");
-}
-
-/**
- * Benchmarks.
- */
-
-#[bench]
-fn speed_of_generating_tokens(b: &mut Bencher) {
-    let claims = Claims::default();
-    let generator = Generator::default();
-    b.iter(|| generator.token(&claims).unwrap());
-}
-
-#[bench]
-fn speed_of_generating_tokens_with_validation(b: &mut Bencher) {
-    let claims = Claims::default();
-    let mut generator = Generator::default();
-    generator.validate_claims = true;
-    b.iter(|| generator.token(&claims).unwrap());
-}
-
-#[bench]
-fn speed_of_validating_tokens(b: &mut Bencher) {
-    let claims = Claims::default();
-    let generator = Generator::default();
-    let token = generator.token(&claims).unwrap();
-
-    let mut validator = Validator::new(ValidatorOptions::default());
-
-    // Validate once to cache the public key:
-    validator.decode::<Claims>(&token, &vec!["service01"]).unwrap();
-    b.iter(|| validator.decode::<Claims>(&token, &vec!["service01"]).unwrap());
-}
-
-#[bench]
-fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
-    let claims = Claims::default();
-    let generator = Generator::default();
-    let token = generator.token(&claims).unwrap();
-
-    let jwt_validator = jwt::Validation {
-        leeway: 0,
-        validate_exp: false,
-        validate_iat: false,
-        validate_nbf: false,
-        iss: None,
-        sub: None,
-        aud: None,
-        algorithms: vec![jwt::Algorithm::RS256],
-    };
-
-    let public_key: &[u8] = include_bytes!("../support/keys/service01/1530402390-public.der");
-    b.iter(|| jwt::decode::<Claims>(&token, &public_key, &jwt_validator).unwrap());
-}
-
-#[bench]
-fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
-    let claims = Claims::default();
-    let generator = Generator::default();
-    let token = generator.token(&claims).unwrap();
-
-    let mut validator = Validator::new(ValidatorOptions::default());
-    b.iter(|| validator.dangerous_unsafe_decode::<Claims>(&token).unwrap());
 }

@@ -1,7 +1,7 @@
 set -e
 
 # Since the tests need to be run serially run them with just one thread.
-RUST_TEST_THREADS=1 cargo test --lib
+RUST_TEST_THREADS=1 cargo test --tests
 
 # Documentation tests.
 cargo test --doc

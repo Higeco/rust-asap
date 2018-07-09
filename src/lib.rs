@@ -140,12 +140,8 @@
 
 // TODO: have a predefined "claims" mod that assists in creating claims?
 
-#![feature(test)]
-#[cfg(test)] extern crate test;
-
 extern crate serde;
 extern crate serde_json;
-#[macro_use] extern crate serde_derive;
 extern crate jsonwebtoken as jwt;
 extern crate reqwest;
 extern crate chrono;
@@ -158,4 +154,3 @@ mod util;
 mod errors;
 pub mod generator;
 pub mod validator;
-#[cfg(test)] mod tests;
