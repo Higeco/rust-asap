@@ -4,7 +4,7 @@ members = ["support/keyserver"]
 [package]
 name = "asap"
 readme = "README.md"
-version = "0.2.3"
+version = "0.3.0"
 license = "MIT"
 authors = ["acheronfail <acheronfail@gmail.com>"]
 keywords = ["asap", "jwt", "api", "token", "authorisation"]
