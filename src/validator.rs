@@ -61,31 +61,38 @@ pub const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(600);
 pub struct ValidatorBuilder {
     /// The identifier of the resource server. Incoming ASAP tokens must include
     /// this identifier in their `aud` claim in order for the token to be valid.
-    pub resource_server_audience: Option<String>,
+    resource_server_audience: Option<String>,
     /// The keyserver URL. Must have a trailing "/".
-    pub keyserver_url: Option<String>,
+    keyserver_url: Option<String>,
     /// The fallback keyserver URL. Must have a trailing "/".
-    pub fallback_keyserver_url: Option<String>,
+    fallback_keyserver_url: Option<String>,
     /// Since validating time fields is always a bit tricky due to clock skew,
     /// this field adds `leeway` to the `iat`, `exp` and `nbf` validation (which
-    /// are measured in seconds). If unset this defaults to 0.
-    pub leeway: Option<i64>,
+    /// are measured in seconds).
+    ///
+    /// If unset this defaults to 0.
+    leeway: Option<i64>,
     /// The max lifespan (difference between `exp` and `iat`) of the token in
     /// seconds. This defaults to one hour (as defined per spec) but you may set
-    /// it to a lower value if desired. Setting to a value above one hour will
-    /// have no effect (will default to one hour).
-    pub max_lifespan: Option<i64>,
+    /// it to a lower value if desired.
+    ///
+    /// Setting to a value above one hour will have no effect (will default to one hour).
+    max_lifespan: Option<i64>,
     /// Whether or not the validator should check for duplicate `jti` nonces.
+    ///
     /// If this is set, then the validator will reject tokens who have a `jti`
     /// claim that the validator has seen before.
-    pub validate_jti: bool,
+    validate_jti: bool,
     /// Whether or not the validator should check that the `kid` starts with
-    /// `"$iss/"` where `$iss` is the issuer. Setting this to `true` is
-    /// recommended.
-    pub validate_kid: bool,
+    /// `"$iss/"` where `$iss` is the issuer.
+    ///
+    /// Setting this to `true` is recommended.
+    validate_kid: bool,
     /// The duration of how long the validator should cache public keys fetched
-    /// from the keyserver. Defaults to 10 minutes.
-    pub cache_duration: Option<Duration>,
+    /// from the keyserver.
+    ///
+    /// Defaults to 10 minutes.
+    cache_duration: Option<Duration>,
 }
 
 impl ValidatorBuilder {
@@ -122,6 +129,7 @@ impl ValidatorBuilder {
     }
 
     /// Sets the `fallback_keyserver` for the `Validator`.
+    ///
     /// Default is the primary `keyserver` (given in `ValidatorBuilder::new()`).
     pub fn fallback_keyserver(&mut self, url: String) -> &mut ValidatorBuilder {
         self.fallback_keyserver_url = Some(url);
@@ -129,6 +137,7 @@ impl ValidatorBuilder {
     }
 
     /// Sets the `leeway` for the `Validator`.
+    ///
     /// Defaults to `0`.
     pub fn leeway(&mut self, leeway: i64) -> &mut ValidatorBuilder {
         self.leeway = Some(leeway);
@@ -138,6 +147,7 @@ impl ValidatorBuilder {
     /// Sets the `max_lifespan` for the `Validator`.
     /// Valid values are from `0` to `3600` inclusive. Any other value outside
     /// this range will be clamped.
+    ///
     /// Defaults to `3600`.
     pub fn max_lifespan(&mut self, max_lifespan: i64) -> &mut ValidatorBuilder {
         self.max_lifespan = Some(max_lifespan);
@@ -145,6 +155,7 @@ impl ValidatorBuilder {
     }
 
     /// Sets the `cache_duration` for the `Validator`.
+    ///
     /// Defaults to `validator::DEFAULT_CACHE_DURATION`.
     pub fn cache_duration(&mut self, cache_duration: Duration) -> &mut ValidatorBuilder {
         self.cache_duration = Some(cache_duration);
@@ -152,6 +163,7 @@ impl ValidatorBuilder {
     }
 
     /// Sets the `validate_kid` for the `Validator`.
+    ///
     /// Defaults to `true`.
     pub fn validate_kid(&mut self, validate_kid: bool) -> &mut ValidatorBuilder {
         self.validate_kid = validate_kid;
@@ -159,6 +171,7 @@ impl ValidatorBuilder {
     }
 
     /// Sets the `validate_jti` for the `Validator`.
+    ///
     /// Defaults to `false`.
     pub fn validate_jti(&mut self, validate_jti: bool) -> &mut ValidatorBuilder {
         self.validate_jti = validate_jti;
