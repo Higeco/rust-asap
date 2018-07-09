@@ -82,23 +82,18 @@
 //! # extern crate chrono;
 //! # #[macro_use] extern crate serde_derive;
 //! #
-//! # use asap::validator::{Validator, ValidatorOptions};
+//! # use asap::validator::{Validator, ValidatorBuilder};
 //! # use serde::de::DeserializeOwned;
 //! # use chrono::Utc;
 //! #
 //! # let now = Utc::now().timestamp();
 //! #
 //! // Construct the ASAP validator:
-//! let mut validator = Validator::new(ValidatorOptions {
-//!     leeway: None,
-//!     max_lifespan: None,
-//!     keyserver_url: String::from("http://my-keyserver/"),
-//!     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
-//!     resource_server_audience: String::from("my-server"),
-//!     validate_jti: false,
-//!     validate_kid: true,
-//!     cache_duration: None
-//! });
+//! let keyserver = String::from("http://my-keyserver/");
+//! let resource_server_audience = String::from("my-server");
+//! let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
+//!     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
+//!     .finish();
 //!
 //! // Your expected jwt claims:
 //! #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -137,8 +132,6 @@
 //!
 //! That's really it! It should be simple - that's the goal.
 //! Thanks for using this crate!
-
-// TODO: have a predefined "claims" mod that assists in creating claims?
 
 extern crate serde;
 extern crate serde_json;

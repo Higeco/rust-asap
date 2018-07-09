@@ -13,7 +13,7 @@ use serde::de::DeserializeOwned;
 use chrono::Utc;
 
 use asap::generator::Generator;
-use asap::validator::{Validator, ValidatorOptions};
+use asap::validator::{Validator, ValidatorBuilder};
 
 // A private key to use to sign the tokens.
 const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/service01/1530402390-private.der");
@@ -53,17 +53,9 @@ impl Default for Claims {
     }
 }
 
-fn default_validator_options() -> ValidatorOptions {
-    ValidatorOptions {
-        leeway: None,
-        max_lifespan: None,
-        resource_server_audience: String::from("resource_server_audience"),
-        keyserver_url: String::from(KS_URL),
-        fallback_keyserver_url: String::from(KS_URL),
-        validate_kid: true,
-        validate_jti: false,
-        cache_duration: None
-    }
+fn get_validator_builder() -> ValidatorBuilder {
+    let resource_server_audience = String::from("resource_server_audience");
+    ValidatorBuilder::new(String::from(KS_URL), resource_server_audience)
 }
 
 fn default_generator() -> Generator {
@@ -119,10 +111,6 @@ fn ks_count() -> String {
  * TODO: Surely, there's a better way to do this/run them in parallel.
  */
 
-// TODO: already done by `jsonwebtoken` but need to have tests:
-//  --> Resource servers MUST reject tokens signed with an unsupported algorithm
-//  --> Unsigned access tokens MUST be rejected
-
 #[test]
 fn keyserver_works() {
     // Count should start at 0.
@@ -144,7 +132,7 @@ fn keyserver_works() {
 fn it_works() {
     let claims = Claims::default();
     let generator = default_generator();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
 
     let token_data = val_token(&mut validator, &gen_token(&generator, &claims), &vec!["service01"]);
     assert_eq!(claims, token_data.claims);
@@ -240,7 +228,7 @@ fn generator_checks_claims_are_valid() {
 fn validates_nbf_is_after_current_time() {
     let now = Utc::now().timestamp();
     let generator = default_generator();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
 
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
     struct ClaimsWithNbf {
@@ -277,7 +265,7 @@ fn validates_nbf_is_after_current_time() {
 fn validates_unset_nbf_is_after_current_time() {
     let now = Utc::now().timestamp();
     let generator = default_generator();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
 
     // The `nbf` claim will default to `iat`.
     let mut claims = Claims::default();
@@ -300,7 +288,7 @@ fn validates_exp_is_before_current_time() {
     let mut claims = Claims::default();
 
     let generator = default_generator();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
 
     // Validation should fail since `exp` is before current time.
     claims.exp = now - 30;
@@ -320,9 +308,9 @@ fn validates_if_max_lifespan_is_exceeded() {
     let generator = default_generator();
     let mut claims = Claims::default();
 
-    let mut validator_options = default_validator_options();
-    validator_options.max_lifespan = Some(9_999_999_999); // Should clamp to hard limit
-    let mut validator = Validator::new(validator_options);
+    let mut validator = get_validator_builder()
+        .max_lifespan(9_999_999_999)
+        .finish();
 
     // Validation should succeed since `max_lifespan` is below hard limit.
     claims.iat = now;
@@ -345,9 +333,9 @@ fn validates_if_custom_max_lifespan_is_exceeded() {
     let generator = default_generator();
     let mut claims = Claims::default();
 
-    let mut validator_options = default_validator_options();
-    validator_options.max_lifespan = Some(60);
-    let mut validator = Validator::new(validator_options);
+    let mut validator = get_validator_builder()
+        .max_lifespan(60)
+        .finish();
 
     // Validation should succeed since `max_lifespan` is below custom limit.
     claims.iat = now;
@@ -367,7 +355,7 @@ fn validates_if_custom_max_lifespan_is_exceeded() {
 #[test]
 fn validates_if_encounters_unrecognized_audience() {
     let generator = default_generator();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
     let mut claims = Claims::default();
 
     // Should succeed since `Claims::default().aud = "resource_server_audience"`.
@@ -386,7 +374,7 @@ fn validates_if_encounters_unrecognized_audience() {
 fn validates_if_encounters_unrecognized_audience_as_vec() {
     let now = Utc::now().timestamp();
     let generator = default_generator();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
 
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
     struct ClaimsWithAUDAsVec {
@@ -423,7 +411,7 @@ fn validates_if_encounters_unrecognized_audience_as_vec() {
 #[test]
 fn validates_if_encounters_unauthorized_subject() {
     let generator = default_generator();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
     let mut claims = Claims::default();
 
     // Should succeed since `Claims::default().iss = "service01"`.
@@ -464,7 +452,7 @@ fn iss_is_assumed_if_sub_is_undefined() {
     let claims_without_sub = Claims::default();
 
     let generator = default_generator();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
 
     let token_with_sub = generator.token(&claims_with_sub).unwrap();
     let token_without_sub = gen_token(&generator, &claims_without_sub);
@@ -486,7 +474,7 @@ fn iss_is_assumed_if_sub_is_undefined() {
 #[test]
 fn validates_kid_is_owned_by_isser() {
     let generator = default_generator();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
     let mut claims = Claims::default();
 
     // Default implementations should pass because:
@@ -506,15 +494,14 @@ fn validates_kid_is_owned_by_isser() {
 
 #[test]
 fn it_rejects_duplicate_jti_claims() {
+    let generator = default_generator();
     let mut claims = Claims::default();
-    let mut validator_options = default_validator_options();
-
-    // Enable duplicate `jti` detection:
-    validator_options.validate_jti = true;
     claims.jti = String::from("first-nonce");
 
-    let generator = default_generator();
-    let mut validator = Validator::new(validator_options);
+    // Enable duplicate `jti` detection:
+    let mut validator = get_validator_builder()
+        .validate_jti(true)
+        .finish();
 
     // First token (first `jti` seen) should be successful.
     val_token::<Claims>(&mut validator, &gen_token(&generator, &claims), &vec!["service01"]);
@@ -535,7 +522,7 @@ fn it_fails_with_wrong_public_key() {
 
     // Give the wrong `kid` for the `private_key` used.
     generator.kid = String::from(KID_02);
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
 
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
@@ -550,7 +537,7 @@ fn it_fails_with_wrong_private_key() {
 
     // Give the wrong `private_key` for the `kid` used.
     generator.private_key = PRIVATE_KEY_02.to_vec();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
 
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
@@ -565,7 +552,7 @@ fn it_fails_with_no_public_key() {
 
     // Give the wrong `kid` for the private key used.
     generator.kid = String::from("not-a-kid");
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
 
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service01"]) {
         Ok(_) => panic!("Validation should fail."),
@@ -576,13 +563,13 @@ fn it_fails_with_no_public_key() {
 #[test]
 fn it_uses_the_fallback_keyserver() {
     let claims = Claims::default();
-    let mut validator_options = default_validator_options();
+    let generator = default_generator();
 
     // Ensure the first keyserver fails.
-    validator_options.keyserver_url = String::from("http://not-a-real-server:1234/");
-
-    let generator = default_generator();
-    let mut validator = Validator::new(validator_options);
+    let keyserver = String::from("http://not-a-real-server:1234/");
+    let mut validator = ValidatorBuilder::new(keyserver, String::from("resource_server_audience"))
+        .fallback_keyserver(String::from(KS_URL))
+        .finish();
 
     let token = gen_token(&generator, &claims);
     let authorized_subjects = vec!["service01"];
@@ -597,7 +584,7 @@ fn it_fetches_key_from_cache() {
 
     let claims = Claims::default();
     let generator = default_generator();
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = get_validator_builder().finish();
 
     // Requesting the same `kid_01` twice should only result in 1 request.
     val_token::<Claims>(&mut validator, &gen_token(&generator, &claims), &vec!["service01"]);
@@ -612,13 +599,12 @@ fn it_does_not_fetch_expired_key_from_cache() {
     ks_reset();
 
     let claims = Claims::default();
-    let mut validator_options = default_validator_options();
+    let generator = default_generator();
 
     // Make all tokens expire immediately.
-    validator_options.cache_duration = Some(Duration::from_nanos(0));
-
-    let generator = default_generator();
-    let mut validator = Validator::new(validator_options);
+    let mut validator = get_validator_builder()
+        .cache_duration(Duration::from_nanos(0))
+        .finish();
 
     // The expired `kid_01` should be requested again = 2 requests.
     val_token::<Claims>(&mut validator, &gen_token(&generator, &claims), &vec!["service01"]);

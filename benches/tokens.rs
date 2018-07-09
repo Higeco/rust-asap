@@ -8,7 +8,7 @@ extern crate serde;
 extern crate serde_derive;
 
 use asap::generator::Generator;
-use asap::validator::{Validator, ValidatorOptions};
+use asap::validator::{Validator, ValidatorBuilder};
 use chrono::Utc;
 use test::Bencher;
 
@@ -19,7 +19,8 @@ const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/service01/15304023
 const KID_01: &'static str = "service01/1530402390-public.der";
 // The URL of our test keyserver.
 const KS_URL: &'static str = "http://localhost:8000/";
-
+// A default resource server audience.
+const SERVER_AUDIENCE: &'static str = "resource_server_audience";
 
 // A simple `Claims` struct. At the least this must include the `iss`, `exp`,
 // `iat`, `aud` and `jti` fields, but you can add extra claims to it as well.
@@ -42,19 +43,6 @@ impl Default for Claims {
             aud: String::from("resource_server_audience"),
             jti: String::from("foobar")
         }
-    }
-}
-
-fn default_validator_options() -> ValidatorOptions {
-    ValidatorOptions {
-        leeway: None,
-        max_lifespan: None,
-        resource_server_audience: String::from("resource_server_audience"),
-        keyserver_url: String::from(KS_URL),
-        fallback_keyserver_url: String::from(KS_URL),
-        validate_kid: true,
-        validate_jti: false,
-        cache_duration: None
     }
 }
 
@@ -84,7 +72,8 @@ fn speed_of_validating_tokens(b: &mut Bencher) {
     let generator = default_generator();
     let token = generator.token(&claims).unwrap();
 
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = ValidatorBuilder::new(KS_URL.to_string(), SERVER_AUDIENCE.to_string())
+        .finish();
 
     // Validate once to cache the public key:
     validator.decode::<Claims>(&token, &vec!["service01"]).unwrap();
@@ -118,6 +107,7 @@ fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
     let generator = default_generator();
     let token = generator.token(&claims).unwrap();
 
-    let mut validator = Validator::new(default_validator_options());
+    let mut validator = ValidatorBuilder::new(KS_URL.to_string(), SERVER_AUDIENCE.to_string())
+        .finish();
     b.iter(|| validator.dangerous_unsafe_decode::<Claims>(&token).unwrap());
 }

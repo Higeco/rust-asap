@@ -7,7 +7,7 @@
 //! # extern crate chrono;
 //! # #[macro_use] extern crate serde_derive;
 //! #
-//! # use asap::validator::{Validator, ValidatorOptions};
+//! # use asap::validator::{Validator, ValidatorBuilder};
 //! # use serde::de::DeserializeOwned;
 //! # use chrono::Utc;
 //! #
@@ -26,17 +26,11 @@
 //! # let asap_token = "<your-token-here>";
 //! #
 //! # // Construct the ASAP validator:
-//! # let validator_options = ValidatorOptions {
-//! #     leeway: None,
-//! #     max_lifespan: None,
-//! #     keyserver_url: String::from("http://my-keyserver/"),
-//! #     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
-//! #     resource_server_audience: String::from("my-server"),
-//! #     validate_jti: false,
-//! #     validate_kid: true,
-//! #     cache_duration: None
-//! # };
-//! let mut validator = Validator::new(validator_options);
+//! # let keyserver = String::from("http://my-keyserver/");
+//! # let resource_server_audience = String::from("my-server");
+//! let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
+//!     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
+//!     .finish();
 //! match validator.decode::<MyClaims>(asap_token, &vec!["authorized", "subjects"]) {
 //!     Ok(token_data) => println!("claims {:?}", token_data.claims),
 //!     Err(e) => eprintln!("error validation token/invalid token: {:?}", e)
@@ -64,7 +58,7 @@ use errors::{Result, ResultExt, ValidatorError};
 pub const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(600);
 
 /// Options used to configure an ASAP Validator.
-pub struct ValidatorOptions {
+pub struct ValidatorBuilder {
     /// The identifier of the resource server. Incoming ASAP tokens must include
     /// this identifier in their `aud` claim in order for the token to be valid.
     pub resource_server_audience: String,
@@ -94,6 +88,110 @@ pub struct ValidatorOptions {
     pub cache_duration: Option<Duration>
 }
 
+impl ValidatorBuilder {
+    /// Creates a new `ValidatorBuilder`. Use this struct to easily construct
+    /// a `Validator` with your chosen options.
+    ///
+    /// ```rust
+    /// # use std::time::Duration;
+    /// # use asap::validator::{Validator, ValidatorBuilder};
+    ///
+    /// let keyserver = "http://my-keyserver/".to_string();
+    /// let resource_server_audience = "my-server".to_string();
+    /// let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
+    ///     .leeway(5)
+    ///     .max_lifespan(120)
+    ///     .cache_duration(Duration::from_secs(300))
+    ///     .validate_kid(true)
+    ///     .validate_jti(true)
+    ///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
+    ///     .finish();
+    /// ```
+    pub fn new(keyserver_url: String, resource_server_audience: String) -> ValidatorBuilder {
+        ValidatorBuilder {
+            resource_server_audience: resource_server_audience,
+            keyserver_url: keyserver_url.to_string(),
+            fallback_keyserver_url: keyserver_url,
+
+            leeway: None,
+            max_lifespan: None,
+            validate_kid: true,
+            validate_jti: false,
+            cache_duration: None
+        }
+    }
+
+    /// Sets the `fallback_keyserver` for the `Validator`.
+    pub fn fallback_keyserver(mut self, url: String) -> ValidatorBuilder {
+        self.fallback_keyserver_url = url;
+        self
+    }
+
+    /// Sets the `leeway` for the `Validator`.
+    pub fn leeway(mut self, leeway: i64) -> ValidatorBuilder {
+        self.leeway = Some(leeway);
+        self
+    }
+
+    /// Sets the `max_lifespan` for the `Validator`.
+    pub fn max_lifespan(mut self, max_lifespan: i64) -> ValidatorBuilder {
+        self.max_lifespan = Some(max_lifespan);
+        self
+    }
+
+    /// Sets the `cache_duration` for the `Validator`.
+    pub fn cache_duration(mut self, cache_duration: Duration) -> ValidatorBuilder {
+        self.cache_duration = Some(cache_duration);
+        self
+    }
+
+    /// Sets the `validate_kid` for the `Validator`.
+    pub fn validate_kid(mut self, validate_kid: bool) -> ValidatorBuilder {
+        self.validate_kid = validate_kid;
+        self
+    }
+
+    /// Sets the `validate_jti` for the `Validator`.
+    pub fn validate_jti(mut self, validate_jti: bool) -> ValidatorBuilder {
+        self.validate_jti = validate_jti;
+        self
+    }
+
+    /// Sets the `finish` for the `Validator`.
+    pub fn finish(self) -> Validator {
+        let jwt_validator = jwt::Validation {
+            // We perform our own validation of these claims.
+            leeway: 0,
+            validate_exp: false,
+            validate_iat: false,
+            validate_nbf: false,
+            iss: None,
+            sub: None,
+            aud: None,
+
+            // Currently, we only support the `RS256` algorithm.
+            algorithms: vec![jwt::Algorithm::RS256],
+        };
+
+        Validator {
+            leeway: self.leeway.unwrap_or(0),
+            max_lifespan: max(0, min(3600, self.max_lifespan.unwrap_or(3600))),
+            jwt_validator: jwt_validator,
+
+            keyserver_url: self.keyserver_url,
+            fallback_keyserver_url: self.fallback_keyserver_url,
+            resource_server_audience: self.resource_server_audience,
+
+            validate_kid: self.validate_kid,
+            validate_jti: self.validate_jti,
+            jti_seen: HashSet::new(),
+
+            key_cache: HashMap::new(),
+            key_cache_duration: self.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION)
+        }
+    }
+}
+
 /// An ASAP Validator.
 ///
 /// Use this struct in your resource server to decode and validate incoming ASAP
@@ -105,7 +203,7 @@ pub struct ValidatorOptions {
 /// and can:
 ///
 /// * check for duplicate `jti` nonces seen in requests by using
-///     `ValidatorOptions.validate_jti = true`. This means that any token whose
+///     `ValidatorBuilder::validate_jti(true)`. This means that any token whose
 ///     `claims.jti` has been seen before will be rejected.
 /// * set a `leeway` which is used in calculating the token's lifespan and
 ///     expiry. Use this if you need to account for internal clock drift between
@@ -120,23 +218,18 @@ pub struct ValidatorOptions {
 /// # extern crate chrono;
 /// # #[macro_use] extern crate serde_derive;
 /// #
-/// # use asap::validator::{Validator, ValidatorOptions};
+/// # use asap::validator::{Validator, ValidatorBuilder};
 /// # use serde::de::DeserializeOwned;
 /// # use chrono::Utc;
 /// #
 /// # let now = Utc::now().timestamp();
 /// #
 /// // Construct the ASAP validator:
-/// let mut validator = Validator::new(ValidatorOptions {
-///     leeway: None,
-///     max_lifespan: None,
-///     keyserver_url: String::from("http://my-keyserver/"),
-///     fallback_keyserver_url: String::from("http://my-fallback-keyserver/"),
-///     resource_server_audience: String::from("my-server"),
-///     validate_jti: false,
-///     validate_kid: true,
-///     cache_duration: None
-/// });
+/// let keyserver = String::from("http://my-keyserver/");
+/// let resource_server_audience = String::from("my-server");
+/// let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
+///     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
+///     .finish();
 ///
 /// // Your expected jwt claims:
 /// #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -204,40 +297,6 @@ pub struct Validator {
 }
 
 impl Validator {
-    /// Creates a new ASAP Validator from the passed `ValidatorOptions`.
-    pub fn new(opts: ValidatorOptions) -> Validator {
-        let jwt_validator = jwt::Validation {
-            // We perform our own validation of these claims.
-            leeway: 0,
-            validate_exp: false,
-            validate_iat: false,
-            validate_nbf: false,
-            iss: None,
-            sub: None,
-            aud: None,
-
-            // Currently, we only support the `RS256` algorithm.
-            algorithms: vec![jwt::Algorithm::RS256],
-        };
-
-        Validator {
-            leeway: opts.leeway.unwrap_or(0),
-            max_lifespan: max(0, min(3600, opts.max_lifespan.unwrap_or(3600))),
-            jwt_validator: jwt_validator,
-
-            keyserver_url: opts.keyserver_url,
-            fallback_keyserver_url: opts.fallback_keyserver_url,
-            resource_server_audience: opts.resource_server_audience,
-
-            validate_kid: opts.validate_kid,
-            validate_jti: opts.validate_jti,
-            jti_seen: HashSet::new(),
-
-            key_cache: HashMap::new(),
-            key_cache_duration: opts.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION)
-        }
-    }
-
     /// Instantiates a validator from the environment. Requires that the
     /// following environment variables be defined:
     ///
@@ -260,16 +319,10 @@ impl Validator {
         let get_env_var = |x| env::var(x)
             .expect(&format!("Could not find '{:?}' environment variable", x));
 
-        Validator::new(ValidatorOptions {
-            leeway: None,
-            max_lifespan: None,
-            keyserver_url: get_env_var("ASAP_KEYSERVER_URL"),
-            fallback_keyserver_url: get_env_var("ASAP_FALLBACK_KEYSERVER_URL"),
-            resource_server_audience: get_env_var("ASAP_SERVER_AUDIENCE"),
-            validate_kid: true,
-            validate_jti: false,
-            cache_duration: None
-        })
+        let keyserver_url = get_env_var("ASAP_KEYSERVER_URL");
+        let resource_server_audience = get_env_var("ASAP_SERVER_AUDIENCE");
+
+        ValidatorBuilder::new(keyserver_url, resource_server_audience).finish()
     }
 
     // Attempt to fetch the public key from cache.
@@ -347,23 +400,18 @@ impl Validator {
     /// # extern crate chrono;
     /// # #[macro_use] extern crate serde_derive;
     /// #
-    /// # use asap::validator::{Validator, ValidatorOptions};
+    /// # use asap::validator::{Validator, ValidatorBuilder};
     /// # use serde::de::DeserializeOwned;
     /// # use chrono::Utc;
     /// #
     /// # let now = Utc::now().timestamp();
     /// #
     /// # // Construct the ASAP validator:
-    /// # let mut validator = Validator::new(ValidatorOptions {
-    /// #     leeway: None,
-    /// #     max_lifespan: None,
-    /// #     keyserver_url: String::from("http://my-keyserver/"),
-    /// #     fallback_keyserver_url: String::from("http://fallback-keyserver/"),
-    /// #     resource_server_audience: String::from("my-server"),
-    /// #     validate_jti: false,
-    /// #     validate_kid: true,
-    /// #     cache_duration: None
-    /// # });
+    /// # let keyserver = String::from("http://my-keyserver/");
+    /// # let resource_server_audience = String::from("my-server");
+    /// # let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
+    /// #     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
+    /// #     .finish();
     /// #
     /// # // Your expected jwt claims:
     /// # #[derive(Debug, Serialize, Deserialize, PartialEq)]
