@@ -122,42 +122,48 @@ impl ValidatorBuilder {
     }
 
     /// Sets the `fallback_keyserver` for the `Validator`.
+    /// Default is the primary `keyserver` (given in `ValidatorBuilder::new()`).
     pub fn fallback_keyserver(mut self, url: String) -> ValidatorBuilder {
         self.fallback_keyserver_url = url;
         self
     }
 
     /// Sets the `leeway` for the `Validator`.
+    /// Defaults to `0`.
     pub fn leeway(mut self, leeway: i64) -> ValidatorBuilder {
         self.leeway = Some(leeway);
         self
     }
 
     /// Sets the `max_lifespan` for the `Validator`.
+    /// Defaults to `3600`.
     pub fn max_lifespan(mut self, max_lifespan: i64) -> ValidatorBuilder {
         self.max_lifespan = Some(max_lifespan);
         self
     }
 
     /// Sets the `cache_duration` for the `Validator`.
+    /// Defaults to `validator::DEFAULT_CACHE_DURATION`.
     pub fn cache_duration(mut self, cache_duration: Duration) -> ValidatorBuilder {
         self.cache_duration = Some(cache_duration);
         self
     }
 
     /// Sets the `validate_kid` for the `Validator`.
+    /// Defaults to `true`.
     pub fn validate_kid(mut self, validate_kid: bool) -> ValidatorBuilder {
         self.validate_kid = validate_kid;
         self
     }
 
     /// Sets the `validate_jti` for the `Validator`.
+    /// Defaults to `false`.
     pub fn validate_jti(mut self, validate_jti: bool) -> ValidatorBuilder {
         self.validate_jti = validate_jti;
         self
     }
 
-    /// Sets the `finish` for the `Validator`.
+    /// Builds and returns a `Validator` with the configured options.
     pub fn finish(self) -> Validator {
         let jwt_validator = jwt::Validation {
             // We perform our own validation of these claims.
