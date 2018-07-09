@@ -146,7 +146,7 @@ extern crate jsonwebtoken as jwt;
 extern crate reqwest;
 extern crate chrono;
 extern crate openssl;
-extern crate failure;
+#[macro_use] extern crate failure;
 #[macro_use] extern crate failure_derive;
 
 
