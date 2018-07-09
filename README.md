@@ -1,6 +1,7 @@
 # ASAP for Rust
 
 [![crates.io](https://img.shields.io/crates/v/asap.svg)](https://crates.io/crates/asap)
+[![dependency status](https://deps.rs/repo/bitbucket/cosmotherly/rust-asap/status.svg)](https://deps.rs/repo/bitbucket/cosmotherly/rust-asap)
 
 [Documentation](https://docs.rs/asap).
 
