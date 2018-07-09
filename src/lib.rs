@@ -91,9 +91,9 @@
 //! // Construct the ASAP validator:
 //! let keyserver = String::from("http://my-keyserver/");
 //! let resource_server_audience = String::from("my-server");
-//! let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
+//! let mut validator = Validator::builder(keyserver, resource_server_audience)
 //!     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
-//!     .finish();
+//!     .build();
 //!
 //! // Your expected jwt claims:
 //! #[derive(Debug, Serialize, Deserialize, PartialEq)]

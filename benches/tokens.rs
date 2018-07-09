@@ -8,7 +8,7 @@ extern crate serde;
 extern crate serde_derive;
 
 use asap::generator::Generator;
-use asap::validator::{Validator, ValidatorBuilder};
+use asap::validator::Validator;
 use chrono::Utc;
 use test::Bencher;
 
@@ -72,8 +72,8 @@ fn speed_of_validating_tokens(b: &mut Bencher) {
     let generator = default_generator();
     let token = generator.token(&claims).unwrap();
 
-    let mut validator = ValidatorBuilder::new(KS_URL.to_string(), SERVER_AUDIENCE.to_string())
-        .finish();
+    let mut validator = Validator::builder(KS_URL.to_string(), SERVER_AUDIENCE.to_string())
+        .build();
 
     // Validate once to cache the public key:
     validator.decode::<Claims>(&token, &vec!["service01"]).unwrap();
@@ -107,7 +107,7 @@ fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
     let generator = default_generator();
     let token = generator.token(&claims).unwrap();
 
-    let mut validator = ValidatorBuilder::new(KS_URL.to_string(), SERVER_AUDIENCE.to_string())
-        .finish();
+    let mut validator = Validator::builder(KS_URL.to_string(), SERVER_AUDIENCE.to_string())
+        .build();
     b.iter(|| validator.dangerous_unsafe_decode::<Claims>(&token).unwrap());
 }

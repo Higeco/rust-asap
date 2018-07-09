@@ -30,7 +30,7 @@
 //! # let resource_server_audience = String::from("my-server");
 //! let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
 //!     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
-//!     .finish();
+//!     .build();
 //! match validator.decode::<MyClaims>(asap_token, &vec!["authorized", "subjects"]) {
 //!     Ok(token_data) => println!("claims {:?}", token_data.claims),
 //!     Err(e) => eprintln!("error validation token/invalid token: {:?}", e)
@@ -61,11 +61,11 @@ pub const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(600);
 pub struct ValidatorBuilder {
     /// The identifier of the resource server. Incoming ASAP tokens must include
     /// this identifier in their `aud` claim in order for the token to be valid.
-    pub resource_server_audience: String,
+    pub resource_server_audience: Option<String>,
     /// The keyserver URL. Must have a trailing "/".
-    pub keyserver_url: String,
+    pub keyserver_url: Option<String>,
     /// The fallback keyserver URL. Must have a trailing "/".
-    pub fallback_keyserver_url: String,
+    pub fallback_keyserver_url: Option<String>,
     /// Since validating time fields is always a bit tricky due to clock skew,
     /// this field adds `leeway` to the `iat`, `exp` and `nbf` validation (which
     /// are measured in seconds). If unset this defaults to 0.
@@ -105,13 +105,13 @@ impl ValidatorBuilder {
     ///     .validate_kid(true)
     ///     .validate_jti(true)
     ///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
-    ///     .finish();
+    ///     .build();
     /// ```
     pub fn new(keyserver_url: String, resource_server_audience: String) -> ValidatorBuilder {
         ValidatorBuilder {
-            resource_server_audience: resource_server_audience,
-            keyserver_url: keyserver_url.to_string(),
-            fallback_keyserver_url: keyserver_url,
+            resource_server_audience: Some(resource_server_audience),
+            keyserver_url: Some(keyserver_url.to_string()),
+            fallback_keyserver_url: Some(keyserver_url),
 
             leeway: None,
             max_lifespan: None,
@@ -123,48 +123,50 @@ impl ValidatorBuilder {
 
     /// Sets the `fallback_keyserver` for the `Validator`.
     /// Default is the primary `keyserver` (given in `ValidatorBuilder::new()`).
-    pub fn fallback_keyserver(mut self, url: String) -> ValidatorBuilder {
-        self.fallback_keyserver_url = url;
+    pub fn fallback_keyserver(&mut self, url: String) -> &mut ValidatorBuilder {
+        self.fallback_keyserver_url = Some(url);
         self
     }
 
     /// Sets the `leeway` for the `Validator`.
     /// Defaults to `0`.
-    pub fn leeway(mut self, leeway: i64) -> ValidatorBuilder {
+    pub fn leeway(&mut self, leeway: i64) -> &mut ValidatorBuilder {
         self.leeway = Some(leeway);
         self
     }
 
     /// Sets the `max_lifespan` for the `Validator`.
+    /// Valid values are from `0` to `3600` inclusive. Any other value outside
+    /// this range will be clamped.
     /// Defaults to `3600`.
-    pub fn max_lifespan(mut self, max_lifespan: i64) -> ValidatorBuilder {
+    pub fn max_lifespan(&mut self, max_lifespan: i64) -> &mut ValidatorBuilder {
         self.max_lifespan = Some(max_lifespan);
         self
     }
 
     /// Sets the `cache_duration` for the `Validator`.
     /// Defaults to `validator::DEFAULT_CACHE_DURATION`.
-    pub fn cache_duration(mut self, cache_duration: Duration) -> ValidatorBuilder {
+    pub fn cache_duration(&mut self, cache_duration: Duration) -> &mut ValidatorBuilder {
         self.cache_duration = Some(cache_duration);
         self
     }
 
     /// Sets the `validate_kid` for the `Validator`.
     /// Defaults to `true`.
-    pub fn validate_kid(mut self, validate_kid: bool) -> ValidatorBuilder {
+    pub fn validate_kid(&mut self, validate_kid: bool) -> &mut ValidatorBuilder {
         self.validate_kid = validate_kid;
         self
     }
 
     /// Sets the `validate_jti` for the `Validator`.
     /// Defaults to `false`.
-    pub fn validate_jti(mut self, validate_jti: bool) -> ValidatorBuilder {
+    pub fn validate_jti(&mut self, validate_jti: bool) -> &mut ValidatorBuilder {
         self.validate_jti = validate_jti;
         self
     }
 
     /// Builds and returns a `Validator` with the configured options.
-    pub fn finish(self) -> Validator {
+    pub fn build(&mut self) -> Validator {
         let jwt_validator = jwt::Validation {
             // We perform our own validation of these claims.
             leeway: 0,
@@ -184,9 +186,9 @@ impl ValidatorBuilder {
             max_lifespan: max(0, min(3600, self.max_lifespan.unwrap_or(3600))),
             jwt_validator: jwt_validator,
 
-            keyserver_url: self.keyserver_url,
-            fallback_keyserver_url: self.fallback_keyserver_url,
-            resource_server_audience: self.resource_server_audience,
+            keyserver_url: self.keyserver_url.take().unwrap(),
+            fallback_keyserver_url: self.fallback_keyserver_url.take().unwrap(),
+            resource_server_audience: self.resource_server_audience.take().unwrap(),
 
             validate_kid: self.validate_kid,
             validate_jti: self.validate_jti,
@@ -233,9 +235,9 @@ impl ValidatorBuilder {
 /// // Construct the ASAP validator:
 /// let keyserver = String::from("http://my-keyserver/");
 /// let resource_server_audience = String::from("my-server");
-/// let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
+/// let mut validator = Validator::builder(keyserver, resource_server_audience)
 ///     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
-///     .finish();
+///     .build();
 ///
 /// // Your expected jwt claims:
 /// #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -303,6 +305,11 @@ pub struct Validator {
 }
 
 impl Validator {
+    /// Creates a builder that can be used to construct a `Validator`.
+    pub fn builder(keyserver_url: String, resource_server_audience: String) -> ValidatorBuilder {
+        ValidatorBuilder::new(keyserver_url, resource_server_audience)
+    }
+
     /// Instantiates a validator from the environment. Requires that the
     /// following environment variables be defined:
     ///
@@ -328,7 +335,7 @@ impl Validator {
         let keyserver_url = get_env_var("ASAP_KEYSERVER_URL");
         let resource_server_audience = get_env_var("ASAP_SERVER_AUDIENCE");
 
-        ValidatorBuilder::new(keyserver_url, resource_server_audience).finish()
+        ValidatorBuilder::new(keyserver_url, resource_server_audience).build()
     }
 
     // Attempt to fetch the public key from cache.
@@ -415,9 +422,9 @@ impl Validator {
     /// # // Construct the ASAP validator:
     /// # let keyserver = String::from("http://my-keyserver/");
     /// # let resource_server_audience = String::from("my-server");
-    /// # let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
+    /// # let mut validator = Validator::builder(keyserver, resource_server_audience)
     /// #     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
-    /// #     .finish();
+    /// #     .build();
     /// #
     /// # // Your expected jwt claims:
     /// # #[derive(Debug, Serialize, Deserialize, PartialEq)]
