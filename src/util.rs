@@ -1,6 +1,6 @@
 use serde::de::DeserializeOwned;
-use serde_json::{from_value, Value};
 use serde_json::map::Map;
+use serde_json::{from_value, Value};
 
 use errors::{Result, ValidatorError};
 
@@ -21,13 +21,12 @@ pub fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String
 
 // Helper fn to extract the given claim from a claims map.
 pub fn extract_claim<T>(claims: &Map<String, Value>, key: &str) -> Result<T>
-    where T: DeserializeOwned
+where
+    T: DeserializeOwned,
 {
     if let Some(x) = claims.get(key) {
         Ok(from_value::<T>(x.clone())?)
     } else {
-        return Err(ValidatorError::ClaimNotFound(key.to_string()).into());
+        Err(ValidatorError::ClaimNotFound(key.to_string()).into())
     }
 }
-
-

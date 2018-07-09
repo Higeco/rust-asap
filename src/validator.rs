@@ -37,21 +37,21 @@
 //! }
 //! ```
 
-use std::io::Read;
-use std::env;
-use std::cmp::{min, max};
-use std::collections::{HashMap, HashSet};
-use std::time::{Duration, SystemTime};
-use jwt::{self, TokenData};
-use serde::ser::Serialize;
-use serde::de::DeserializeOwned;
-use serde_json::value::Value;
-use serde_json::{Map, to_string, from_str};
 use chrono::Utc;
+use jwt::{self, TokenData};
 use reqwest;
+use serde::de::DeserializeOwned;
+use serde::ser::Serialize;
+use serde_json::value::Value;
+use serde_json::{from_str, to_string, Map};
+use std::cmp::{max, min};
+use std::collections::{HashMap, HashSet};
+use std::env;
+use std::io::Read;
+use std::time::{Duration, SystemTime};
 
-use util::{extract_claim, extract_aud_from_claims};
 use errors::{Result, ResultExt, ValidatorError};
+use util::{extract_aud_from_claims, extract_claim};
 
 /// The duration of how long the validator should cache public keys fetched
 /// from the keyserver. Defaults to 10 minutes.
@@ -85,7 +85,7 @@ pub struct ValidatorBuilder {
     pub validate_kid: bool,
     /// The duration of how long the validator should cache public keys fetched
     /// from the keyserver. Defaults to 10 minutes.
-    pub cache_duration: Option<Duration>
+    pub cache_duration: Option<Duration>,
 }
 
 impl ValidatorBuilder {
@@ -117,7 +117,7 @@ impl ValidatorBuilder {
             max_lifespan: None,
             validate_kid: true,
             validate_jti: false,
-            cache_duration: None
+            cache_duration: None,
         }
     }
 
@@ -184,7 +184,7 @@ impl ValidatorBuilder {
         Validator {
             leeway: self.leeway.unwrap_or(0),
             max_lifespan: max(0, min(3600, self.max_lifespan.unwrap_or(3600))),
-            jwt_validator: jwt_validator,
+            jwt_validator,
 
             keyserver_url: self.keyserver_url.take().unwrap(),
             fallback_keyserver_url: self.fallback_keyserver_url.take().unwrap(),
@@ -195,7 +195,7 @@ impl ValidatorBuilder {
             jti_seen: HashSet::new(),
 
             key_cache: HashMap::new(),
-            key_cache_duration: self.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION)
+            key_cache_duration: self.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION),
         }
     }
 }
@@ -301,7 +301,7 @@ pub struct Validator {
     /// A hash-map used for simple key-caching.
     key_cache: HashMap<String, (SystemTime, Vec<u8>)>,
     /// The duration each cached key is valid before it's fetched again.
-    key_cache_duration: Duration
+    key_cache_duration: Duration,
 }
 
 impl Validator {
@@ -329,8 +329,9 @@ impl Validator {
     /// let validator = Validator::from_env();
     /// ```
     pub fn from_env() -> Validator {
-        let get_env_var = |x| env::var(x)
-            .expect(&format!("Could not find '{:?}' environment variable", x));
+        let get_env_var = |x| {
+            env::var(x).unwrap_or_else(|_| panic!("Could not find '{:?}' environment variable", x))
+        };
 
         let keyserver_url = get_env_var("ASAP_KEYSERVER_URL");
         let resource_server_audience = get_env_var("ASAP_SERVER_AUDIENCE");
@@ -378,8 +379,11 @@ impl Validator {
                 if cached_key.is_ok() {
                     return cached_key;
                 }
-                eprintln!("Error fetching from cache, reason: {}. \
-                    Trying keyserver...", cached_key.err().unwrap());
+                eprintln!(
+                    "Error fetching from cache, reason: {}. \
+                     Trying keyserver...",
+                    cached_key.err().unwrap()
+                );
             }
             // If there was any error fetching the key from the cache, just
             // remove the entry from cache.
@@ -389,8 +393,11 @@ impl Validator {
         // Otherwise, fetch the public key from the keyserver(s).
         self.get_key_from_server(&self.keyserver_url, &kid)
             .or_else(|e| {
-                eprintln!("Error fetching from keyserver, reason: {}. \
-                    Trying fallback keyserver...", e);
+                eprintln!(
+                    "Error fetching from keyserver, reason: {}. \
+                     Trying fallback keyserver...",
+                    e
+                );
                 self.get_key_from_server(&self.fallback_keyserver_url, &kid)
             })
     }
@@ -452,18 +459,18 @@ impl Validator {
     ///     Err(e) => eprintln!("{:?}", e)
     /// }
     /// ```
-    pub fn decode<T>(&mut self, token: &str, authorized_subjects: &Vec<&str>) -> Result<TokenData<T>>
-        where T: DeserializeOwned + Serialize
+    pub fn decode<T>(&mut self, token: &str, authorized_subjects: &[&str]) -> Result<TokenData<T>>
+    where
+        T: DeserializeOwned + Serialize,
     {
         // First, decode the header.
         let header = jwt::decode_header(token).sync()?;
 
         // Extract `kid` (the public key id) from jwt header.
-        let kid = if header.kid.is_some() {
-            header.kid.unwrap().to_string()
-        } else {
-            return Err(ValidatorError::NoKIDFound(header).into());
-        };
+        let kid = header
+            .kid
+            .clone()
+            .ok_or_else(|| ValidatorError::NoKIDFound(header))?;
 
         // Retreive the public key (from cache or the keyserver).
         let public_key = self.get_public_key(&kid)?;
@@ -479,13 +486,17 @@ impl Validator {
         // Benchmarks show that this has no noticible performance impact.
         //
         // See: https://github.com/Keats/jsonwebtoken/issues/53
-        self.validate(&kid, &from_str(&to_string(&data.claims)?)?, authorized_subjects)?;
+        self.validate(
+            &kid,
+            &from_str(&to_string(&data.claims)?)?,
+            authorized_subjects,
+        )?;
 
         // If everything looks good, and the key is not yet cached, then store
         // the public key in the cache.
-        if !self.key_cache.contains_key(&kid) {
-            self.key_cache.insert(kid, (SystemTime::now(), public_key));
-        }
+        self.key_cache
+            .entry(kid)
+            .or_insert((SystemTime::now(), public_key));
 
         // Return the decoded token.
         Ok(data)
@@ -500,14 +511,20 @@ impl Validator {
     ///
     /// !!! WARNING !!!
     pub fn dangerous_unsafe_decode<T>(&mut self, token: &str) -> Result<TokenData<T>>
-        where T: DeserializeOwned
+    where
+        T: DeserializeOwned,
     {
         Ok(jwt::dangerous_unsafe_decode::<T>(token).sync()?)
     }
 
     // Validates the JWT token as per the ASAP specification.
     // The following claims are mandatory: `iss`, `exp`, `iat`, `aud` and `jti`.
-    fn validate(&mut self, kid: &str, claims: &Map<String, Value>, authorized_subjects: &Vec<&str>) -> Result<()> {
+    fn validate(
+        &mut self,
+        kid: &str,
+        claims: &Map<String, Value>,
+        authorized_subjects: &[&str],
+    ) -> Result<()> {
         let now = Utc::now().timestamp();
         let iss = extract_claim::<String>(claims, "iss")?;
         let exp = extract_claim::<i64>(claims, "exp")?;
@@ -522,7 +539,7 @@ impl Validator {
         // explicitly document that behaviour.
         if self.validate_jti {
             if self.jti_seen.contains(&jti) {
-                return Err(ValidatorError::DuplicateJTI(jti.to_string()).into());
+                return Err(ValidatorError::DuplicateJTI(jti).into());
             } else {
                 self.jti_seen.insert(jti.to_string());
             }
@@ -597,12 +614,8 @@ impl Validator {
         // - The resource server MAY decide if the combination of verified
         //      issuer and effective subject is authorised to make the requested
         //      business operation.
-        if !authorized_subjects.contains(&&*sub) {
-            let sub = sub.to_string();
-            let subjects = authorized_subjects.clone()
-                .into_iter()
-                .map(|x| x.to_owned())
-                .collect();
+        if !authorized_subjects.contains(&sub.as_ref()) {
+            let subjects = authorized_subjects.iter().map(|&x| x.to_owned()).collect();
             return Err(ValidatorError::UnauthorizedSubject(sub, subjects).into());
         }
 
@@ -610,5 +623,3 @@ impl Validator {
         Ok(())
     }
 }
-
-

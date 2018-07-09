@@ -48,14 +48,14 @@
 //! ```
 
 use jwt;
-use std::env;
-use serde::ser::Serialize;
-use serde_json::{to_string, from_str};
-use serde_json::map::Map;
 use openssl::rsa::Rsa;
+use serde::ser::Serialize;
+use serde_json::map::Map;
+use serde_json::{from_str, to_string};
+use std::env;
 
-use util::{extract_claim, extract_aud_from_claims};
 use errors::{Result, ResultExt, ValidatorError};
+use util::{extract_aud_from_claims, extract_claim};
 
 /// An ASAP generator.
 ///
@@ -145,7 +145,7 @@ pub struct Generator {
     /// instead).
     ///
     /// Defaults to `false`.
-    pub validate_claims: bool
+    pub validate_claims: bool,
 }
 
 impl Generator {
@@ -153,9 +153,9 @@ impl Generator {
     /// `kid` and sign them with the given `private_key`.
     pub fn new(kid: String, private_key: Vec<u8>) -> Generator {
         Generator {
-            kid: kid,
-            private_key: private_key,
-            validate_claims: false
+            kid,
+            private_key,
+            validate_claims: false,
         }
     }
 
@@ -179,8 +179,9 @@ impl Generator {
     /// let generator = Generator::from_env().unwrap();
     /// ```
     pub fn from_env() -> Result<Generator> {
-        let get_env_var = |x| env::var(x)
-            .map_err(|_| format_err!("Could not find '{:?}' environment variable", x));
+        let get_env_var = |x| {
+            env::var(x).map_err(|_| format_err!("Could not find '{:?}' environment variable", x))
+        };
 
         // Retrieve the private key from env (in `pem` format).
         let key = get_env_var("ASAP_PRIVATE_KEY")?;
@@ -234,7 +235,7 @@ impl Generator {
     pub fn token<T: Serialize>(&self, claims: &T) -> Result<String> {
         // Generate the jwt header.
         let mut header = jwt::Header::default();
-        header.kid = Some(self.kid.to_string());
+        header.kid = Some(self.kid.clone());
         header.alg = jwt::Algorithm::RS256;
 
         // If set, perform a quick validation of the claims struct.
@@ -400,5 +401,4 @@ impl Generator {
 
         Ok(())
     }
-
 }
