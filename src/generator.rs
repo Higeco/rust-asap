@@ -176,18 +176,18 @@ impl Generator {
     /// env::set_var("ASAP_KEY_ID", "my-iss/my-key-id");
     /// env::set_var("ASAP_PRIVATE_KEY", include_str!("../support/keys/service01/1530402390-private.pem"));
     ///
-    /// let generator = Generator::from_env();
+    /// let generator = Generator::from_env().unwrap();
     /// ```
-    pub fn from_env() -> Generator {
+    pub fn from_env() -> Result<Generator> {
         let get_env_var = |x| env::var(x)
-            .expect(&format!("Could not find '{:?}' environment variable", x));
+            .map_err(|_| format_err!("Could not find '{:?}' environment variable", x));
 
         // Retrieve the private key from env (in `pem` format).
-        let key = get_env_var("ASAP_PRIVATE_KEY");
-        let rsa = Rsa::private_key_from_pem(key.as_bytes()).unwrap();
-        let private_key = rsa.private_key_to_der().unwrap();
+        let key = get_env_var("ASAP_PRIVATE_KEY")?;
+        let rsa = Rsa::private_key_from_pem(key.as_bytes())?;
+        let private_key = rsa.private_key_to_der()?;
 
-        Generator::new(get_env_var("ASAP_KEY_ID"), private_key)
+        Ok(Generator::new(get_env_var("ASAP_KEY_ID")?, private_key))
     }
 
     /// Generates an ASAP token with the given claims.
