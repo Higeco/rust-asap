@@ -1,7 +1,7 @@
-#![feature(test)]
 extern crate asap;
+#[macro_use]
+extern crate bencher;
 extern crate chrono;
-extern crate test;
 extern crate jsonwebtoken as jwt;
 extern crate serde;
 #[macro_use]
@@ -9,8 +9,8 @@ extern crate serde_derive;
 
 use asap::generator::Generator;
 use asap::validator::Validator;
+use bencher::Bencher;
 use chrono::Utc;
-use test::Bencher;
 
 
 // A private key to use to sign the tokens.
@@ -51,14 +51,12 @@ fn default_generator() -> Generator {
 }
 
 
-#[bench]
 fn speed_of_generating_tokens(b: &mut Bencher) {
     let claims = Claims::default();
     let generator = default_generator();
     b.iter(|| generator.token(&claims).unwrap());
 }
 
-#[bench]
 fn speed_of_generating_tokens_with_validation(b: &mut Bencher) {
     let claims = Claims::default();
     let mut generator = default_generator();
@@ -66,7 +64,6 @@ fn speed_of_generating_tokens_with_validation(b: &mut Bencher) {
     b.iter(|| generator.token(&claims).unwrap());
 }
 
-#[bench]
 fn speed_of_validating_tokens(b: &mut Bencher) {
     let claims = Claims::default();
     let generator = default_generator();
@@ -80,7 +77,6 @@ fn speed_of_validating_tokens(b: &mut Bencher) {
     b.iter(|| validator.decode::<Claims>(&token, &vec!["service01"]).unwrap());
 }
 
-#[bench]
 fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
     let claims = Claims::default();
     let generator = default_generator();
@@ -101,7 +97,6 @@ fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
     b.iter(|| jwt::decode::<Claims>(&token, &public_key, &jwt_validator).unwrap());
 }
 
-#[bench]
 fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
     let claims = Claims::default();
     let generator = default_generator();
@@ -111,3 +106,7 @@ fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
         .build();
     b.iter(|| validator.dangerous_unsafe_decode::<Claims>(&token).unwrap());
 }
+
+benchmark_group!(generate, speed_of_generating_tokens, speed_of_generating_tokens_with_validation);
+benchmark_group!(validate, speed_of_validating_tokens, speed_of_validating_tokens_without_asap, speed_of_dangerous_unsafe_decode);
+benchmark_main!(generate, validate);
