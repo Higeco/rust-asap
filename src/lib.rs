@@ -138,9 +138,9 @@ extern crate serde_json;
 extern crate jsonwebtoken as jwt;
 extern crate reqwest;
 extern crate chrono;
-extern crate openssl;
 #[macro_use] extern crate failure;
 #[macro_use] extern crate failure_derive;
+extern crate pem;
 
 
 mod util;

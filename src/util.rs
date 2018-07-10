@@ -1,3 +1,4 @@
+use pem;
 use serde::de::DeserializeOwned;
 use serde_json::map::Map;
 use serde_json::{from_value, Value};
@@ -29,4 +30,20 @@ where
     } else {
         Err(ValidatorError::ClaimNotFound(key.to_string()).into())
     }
+}
+
+pub fn convert_pem_to_der(input: &[u8]) -> Result<Vec<u8>> {
+    let key = pem::parse(input)
+        .map_err(|err| format_err!("failed to parse pem data: {}", err))?;
+    Ok(key.contents)
+}
+
+#[test]
+fn key_conversion() {
+    let pem = include_bytes!("../support/keys/service01/1530402390-private.pem");
+    let der = include_bytes!("../support/keys/service01/1530402390-private.der");
+
+    let key = convert_pem_to_der(pem).unwrap();
+
+    assert_eq!(key.as_slice(), der.as_ref())
 }
