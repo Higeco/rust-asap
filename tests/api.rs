@@ -151,7 +151,7 @@ fn instantiates_from_environment() {
     env::set_var("ASAP_PRIVATE_KEY", include_str!("../support/keys/service01/1530402390-private.pem"));
 
     let generator = Generator::from_env().unwrap();
-    let mut validator = Validator::from_env().unwrap();
+    let mut validator = Validator::from_env().unwrap().build();
     val_token::<Claims>(&mut validator, &generator.token(&claims).unwrap(), &vec!["service01"]);
 
     // Tear down environment.

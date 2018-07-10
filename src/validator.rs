@@ -340,7 +340,7 @@ impl Validator {
         ValidatorBuilder::new(keyserver_url, resource_server_audience)
     }
 
-    /// Instantiates a validator from the environment. Requires that the
+    /// Instantiates a validator builder from the environment. Requires that the
     /// following environment variables be defined:
     ///
     /// * `"ASAP_SERVER_AUDIENCE"`: the resource identifier of the validator
@@ -356,9 +356,9 @@ impl Validator {
     /// env::set_var("ASAP_KEYSERVER_URL", "http://keyserver.net/");
     /// env::set_var("ASAP_FALLBACK_KEYSERVER_URL", "http://fallback-keyserver.net/");
     ///
-    /// let validator = Validator::from_env().unwrap();
+    /// let validator = Validator::from_env().unwrap().build();
     /// ```
-    pub fn from_env() -> Result<Validator> {
+    pub fn from_env() -> Result<ValidatorBuilder> {
         let get_env_var = |x| {
             env::var(x).map_err(|_| format_err!("Could not find '{:?}' environment variable", x))
         };
@@ -366,7 +366,7 @@ impl Validator {
         let keyserver_url = get_env_var("ASAP_KEYSERVER_URL")?;
         let resource_server_audience = get_env_var("ASAP_SERVER_AUDIENCE")?;
 
-        Ok(ValidatorBuilder::new(keyserver_url, resource_server_audience).build())
+        Ok(ValidatorBuilder::new(keyserver_url, resource_server_audience))
     }
 
     // Attempt to fetch the public key from cache.
