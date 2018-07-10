@@ -518,10 +518,9 @@ fn it_rejects_duplicate_jti_claims() {
 #[test]
 fn it_fails_with_wrong_public_key() {
     let claims = Claims::default();
-    let mut generator = default_generator();
-
     // Give the wrong `kid` for the `private_key` used.
-    generator.kid = String::from(KID_02);
+    let generator = Generator::new(KID_02.to_string(), PRIVATE_KEY_01.to_vec());
+
     let mut validator = get_validator_builder().build();
 
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service01"]) {
@@ -533,10 +532,9 @@ fn it_fails_with_wrong_public_key() {
 #[test]
 fn it_fails_with_wrong_private_key() {
     let claims = Claims::default();
-    let mut generator = default_generator();
+    // Give the wrong `kid` for the `private_key` used.
+    let generator = Generator::new(KID_02.to_string(), PRIVATE_KEY_01.to_vec());
 
-    // Give the wrong `private_key` for the `kid` used.
-    generator.private_key = PRIVATE_KEY_02.to_vec();
     let mut validator = get_validator_builder().build();
 
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service01"]) {
@@ -548,10 +546,9 @@ fn it_fails_with_wrong_private_key() {
 #[test]
 fn it_fails_with_no_public_key() {
     let claims = Claims::default();
-    let mut generator = default_generator();
+    // Give the wrong `kid` for the `private_key` used.
+    let generator = Generator::new("not-a-kid".to_string(), PRIVATE_KEY_01.to_vec());
 
-    // Give the wrong `kid` for the private key used.
-    generator.kid = String::from("not-a-kid");
     let mut validator = get_validator_builder().build();
 
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service01"]) {

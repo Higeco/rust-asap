@@ -108,32 +108,6 @@ use util::{extract_aud_from_claims, extract_claim};
 /// }
 /// ```
 pub struct Generator {
-    /// Key ID. The identifier of the key used to sign the token in the format
-    /// `"issuer/key-id"` where issuer matches `claims.iss`.
-    ///
-    /// From spec:
-    ///
-    /// `kid`: key identifier, as defined by JWS, with the difference that here it
-    /// is mandatory. The key identifier MUST be a String that is a non-empty sequence
-    /// of non-empty substrings joined with the forward slash character (`/`).
-    /// None of the substrings can be `.` or `..`. As a further restriction, the
-    /// key identifier must match the following Java regular expression: `^[\w.\-\+/]*$`.
-    ///
-    /// NOTE: For the sake of simplicity, at this moment this library does not
-    /// ensure that the `kid` matches the regular expression `^[\w.\-\+/]*$`.
-    pub kid: String,
-    /// The private key to use when generating the token.
-    /// Currently, this only supports keys in the `.der` format.
-    ///
-    /// You can use `openssl` to convert to a `.pem` key to `.der`:
-    ///
-    /// ```bash
-    /// # Convert private key to `.der`:
-    /// openssl rsa -in private_key.key -outform DER -out private_key.der
-    /// # Create a public key in `.der` format:
-    /// openssl rsa -in private_key.der -inform DER -RSAPublicKey_out -outform DER -out public_key.der
-    /// ```
-    pub private_key: Vec<u8>,
     /// Whether or not the generator should validate your given `Claims` struct
     /// before generating a token. Note that if your `Claims` struct does not
     /// have the claims required by the ASAP specification it will likely be
@@ -146,14 +120,49 @@ pub struct Generator {
     ///
     /// Defaults to `false`.
     pub validate_claims: bool,
+
+    header: jwt::Header,
+    private_key: Vec<u8>,
 }
 
 impl Generator {
     /// Creates an ASAP token generator which will generate tokens with the given
-    /// `kid` and sign them with the given `private_key`.
+    /// key id and sign them with the given private key.
+    ///
+    /// ## Key ID
+    ///
+    /// The identifier of the key used to sign the token in the format
+    /// `"issuer/key-id"` where issuer matches `claims.iss`.
+    ///
+    /// `kid`: key identifier, as defined by JWS, with the difference that here it
+    /// is mandatory. The key identifier MUST be a String that is a non-empty sequence
+    /// of non-empty substrings joined with the forward slash character (`/`).
+    /// None of the substrings can be `.` or `..`. As a further restriction, the
+    /// key identifier must match the following Java regular expression: `^[\w.\-\+/]*$`.
+    ///
+    /// NOTE: For the sake of simplicity, at this moment this library does not
+    /// ensure that the `kid` matches the regular expression `^[\w.\-\+/]*$`.
+    ///
+    /// ## Private Key
+    ///
+    /// The private key to use when generating the token.
+    /// Currently, this only supports keys in the `.der` format.
+    ///
+    /// You can use `openssl` to convert to a `.pem` key to `.der`:
+    ///
+    /// ```bash
+    /// # Convert private key to `.der`:
+    /// openssl rsa -in private_key.key -outform DER -out private_key.der
+    /// # Create a public key in `.der` format:
+    /// openssl rsa -in private_key.der -inform DER -RSAPublicKey_out -outform DER -out public_key.der
+    /// ```
     pub fn new(kid: String, private_key: Vec<u8>) -> Generator {
+        let mut header = jwt::Header::default();
+        header.kid = Some(kid);
+        header.alg = jwt::Algorithm::RS256;
+
         Generator {
-            kid,
+            header,
             private_key,
             validate_claims: false,
         }
@@ -233,18 +242,13 @@ impl Generator {
     /// println!("{:?}", token); // eyJ0eXAiOiJKV...
     /// ```
     pub fn token<T: Serialize>(&self, claims: &T) -> Result<String> {
-        // Generate the jwt header.
-        let mut header = jwt::Header::default();
-        header.kid = Some(self.kid.clone());
-        header.alg = jwt::Algorithm::RS256;
-
         // If set, perform a quick validation of the claims struct.
         if self.validate_claims {
             self.validate_claims(claims)?;
         }
 
         // Encode it and sign it with the private key.
-        let token = jwt::encode(&header, claims, &self.private_key).sync()?;
+        let token = jwt::encode(&self.header, claims, &self.private_key).sync()?;
         Ok(token)
     }
 
@@ -386,8 +390,9 @@ impl Generator {
         // if the `kid` string starts with `$iss/` (where $iss is the value of
         // the `iss` claim) and, in affirmative case, accept that as proof of
         // ownership of the key by the issuer.
-        if !self.kid.starts_with(&format!("{}/", &iss)) {
-            return Err(ValidatorError::InvalidKID(self.kid.to_string(), iss.to_string()).into());
+        let kid = self.header.kid.as_ref().unwrap();
+        if !kid.starts_with(&format!("{}/", &iss)) {
+            return Err(ValidatorError::InvalidKID(kid.to_string(), iss.to_string()).into());
         }
 
         // From ASAP spec:
