@@ -319,6 +319,23 @@ pub struct Validator {
 
 impl Validator {
     /// Creates a builder that can be used to construct a `Validator`.
+    ///
+    /// ```rust
+    /// # use std::time::Duration;
+    /// # use asap::validator::Validator;
+    ///
+    /// let keyserver = "http://my-keyserver/".to_string();
+    /// let resource_server_audience = "my-server".to_string();
+    ///
+    /// let mut validator = Validator::builder(keyserver, resource_server_audience)
+    ///     .leeway(5)
+    ///     .max_lifespan(120)
+    ///     .validate_kid(true)
+    ///     .validate_jti(true)
+    ///     .cache_duration(Duration::from_secs(300))
+    ///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
+    ///     .build();
+    /// ```
     pub fn builder(keyserver_url: String, resource_server_audience: String) -> ValidatorBuilder {
         ValidatorBuilder::new(keyserver_url, resource_server_audience)
     }
