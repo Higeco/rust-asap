@@ -23,7 +23,7 @@ Basically, yes. Yes, you should use this library if you want ASAP and use Rust.
 To install, add the following lines to your `Cargo.toml`:
 
 ```toml
-asap = "0.2"
+asap = "<latest-version-from-crates.io>"
 # These crates are required for defining your own `Claims` struct which needs
 # to be serialised into the token (and deserialised out of it).
 serde_derive = "1"
