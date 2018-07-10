@@ -339,17 +339,17 @@ impl Validator {
     /// env::set_var("ASAP_KEYSERVER_URL", "http://keyserver.net/");
     /// env::set_var("ASAP_FALLBACK_KEYSERVER_URL", "http://fallback-keyserver.net/");
     ///
-    /// let validator = Validator::from_env();
+    /// let validator = Validator::from_env().unwrap();
     /// ```
-    pub fn from_env() -> Validator {
+    pub fn from_env() -> Result<Validator> {
         let get_env_var = |x| {
-            env::var(x).unwrap_or_else(|_| panic!("Could not find '{:?}' environment variable", x))
+            env::var(x).map_err(|_| format_err!("Could not find '{:?}' environment variable", x))
         };
 
-        let keyserver_url = get_env_var("ASAP_KEYSERVER_URL");
-        let resource_server_audience = get_env_var("ASAP_SERVER_AUDIENCE");
+        let keyserver_url = get_env_var("ASAP_KEYSERVER_URL")?;
+        let resource_server_audience = get_env_var("ASAP_SERVER_AUDIENCE")?;
 
-        ValidatorBuilder::new(keyserver_url, resource_server_audience).build()
+        Ok(ValidatorBuilder::new(keyserver_url, resource_server_audience).build())
     }
 
     // Attempt to fetch the public key from cache.
