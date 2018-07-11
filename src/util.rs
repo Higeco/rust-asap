@@ -1,4 +1,6 @@
 use pem;
+use rand::{self, Rng};
+use rand::distributions::Alphanumeric;
 use serde::de::DeserializeOwned;
 use serde_json::map::Map;
 use serde_json::{from_value, Value};
@@ -36,6 +38,13 @@ pub fn convert_pem_to_der(input: &[u8]) -> Result<Vec<u8>> {
     let key = pem::parse(input)
         .map_err(|err| format_err!("failed to parse pem data: {}", err))?;
     Ok(key.contents)
+}
+
+pub fn generate_jti() -> String {
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(20)
+        .collect::<String>()
 }
 
 #[test]

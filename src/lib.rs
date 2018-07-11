@@ -29,49 +29,25 @@
 //! # extern crate chrono;
 //! # #[macro_use] extern crate serde_derive;
 //! #
+//! # use asap::claims::{DefaultClaims, Aud};
 //! # use asap::generator::Generator;
 //! # use serde::de::DeserializeOwned;
+//! # use chrono::Utc;
 //! #
-//! // The JWT claims that will be encoded in the token, thanks to Rust's nice
-//! // generics you can define your own as long as it implements the `Serialize`
-//! // `Deserialize` and `PartialEq` traits.
-//! // This example contains the minimum required claims that the ASAP spec requires:
-//! #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//! struct MyClaims {
-//!     iss: String,
-//!     jti: String,
-//!     iat: i64,
-//!     exp: i64,
-//!     // The `aud` claim may also be of type: `Vec<String>`
-//!     aud: String,
-//!     // You can add your extra claims here as necessary!
-//!     // extra_claim_1: String,
-//!     // extra_claim_2: i64,
-//!     // ...
-//!     // ...
-//! }
-//!
-//! // You can use whatever method to obtain the current time in seconds as `i64`.
-//! let now = chrono::Utc::now().timestamp();
-//!
-//! let claims = MyClaims {
-//!     iss: String::from("service01"),
-//!     exp: now + 3000,
-//!     iat: now,
-//!     aud: String::from("resource_server_audience"),
-//!     jti: String::from("foobar")
-//! };
-//!
-//! // The `kid` of the public key in your keyserver.
-//! let kid = String::from("my-iss/my-key-id");
+//! // The identifier of the service that issues the token (`iss`).
+//! let iss = "service01".to_string();
+//! // The key id (`kid`) of the public key in your keyserver.
+//! let kid = "service01/my-key-id".to_string();
 //! // The `private_key` used to sign each token.
-//! let private_key = include_bytes!("../support/keys/service01/1530402390-private.der");
+//! let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
 //!
-//! let generator = Generator::new(kid, private_key.to_vec());
-//! match generator.token(&claims) {
-//!     Ok(token) => println!("{:?}", token),
-//!     Err(e) => eprintln!("Error generating token: {}", e)
-//! }
+//! // Here's your generator! 🎉
+//! let mut generator = Generator::new(iss, kid, private_key);
+//!
+//! // Generate tokens, etc...
+//! # let aud = Aud::One("aud".to_string());
+//! # let extra_claims: Option<DefaultClaims> = None;
+//! let token = generator.token(aud, extra_claims).unwrap();
 //! ```
 //!
 //! And here's another example of how you can validate tokens:
@@ -137,11 +113,14 @@ extern crate chrono;
 #[macro_use] extern crate failure_derive;
 extern crate jsonwebtoken as jwt;
 extern crate pem;
+extern crate rand;
 extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
+#[macro_use] extern crate serde_derive;
 
-mod errors;
 mod util;
+mod errors;
+pub mod claims;
 pub mod generator;
 pub mod validator;

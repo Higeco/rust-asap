@@ -457,10 +457,10 @@ impl Validator {
     /// # let now = Utc::now().timestamp();
     /// #
     /// # // Construct the ASAP validator:
-    /// # let keyserver = String::from("http://my-keyserver/");
-    /// # let resource_server_audience = String::from("my-server");
+    /// # let keyserver = "http://my-keyserver/".to_string();
+    /// # let resource_server_audience = "my-server".to_string();
     /// # let mut validator = Validator::builder(keyserver, resource_server_audience)
-    /// #     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
+    /// #     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
     /// #     .build();
     /// #
     /// # // Your expected jwt claims:
