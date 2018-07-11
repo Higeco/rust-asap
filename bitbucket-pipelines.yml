@@ -1,0 +1,8 @@
+image: rust:latest
+
+pipelines:
+  default:
+    - step:
+        script:
+          - echo "Build project"; cargo build
+          - echo "Running tests"; ./support/test.sh
