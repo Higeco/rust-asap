@@ -263,9 +263,9 @@ impl ValidatorBuilder {
 /// }
 ///
 /// let asap_token = "<your-token-here>";
-/// let authorized_subjects = vec!["list", "of", "authorized", "subjects"];
+/// let whitelisted_issuers = vec!["list", "of", "authorized", "subjects"];
 ///
-/// match validator.decode::<MyClaims>(asap_token, &authorized_subjects) {
+/// match validator.decode::<MyClaims>(asap_token, &whitelisted_issuers) {
 ///     Ok(token_data) => {
 ///         // Here you have a successfully verified and accepted access token!
 ///         //
@@ -442,7 +442,7 @@ impl Validator {
     /// - a valid and well-formed `kid` in the jwt header
     /// - the token's lifespan (`nbf`, `iat` and `exp` checks)
     /// - the `aud` matching/containing `resource_server_audience`
-    /// - the issuer/subject having authorisation (via `authorized_subjects`)
+    /// - the issuer/subject having authorisation (via `whitelisted_issuers`)
     ///
     /// ```rust
     /// # extern crate asap;
@@ -474,9 +474,9 @@ impl Validator {
     /// # }
     /// #
     /// let asap_token = "<your-token-here>";
-    /// let authorized_subjects = vec!["list", "of", "authorized", "subjects"];
+    /// let whitelisted_issuers = vec!["list", "of", "authorized", "subjects"];
     ///
-    /// match validator.decode::<MyClaims>(asap_token, &authorized_subjects) {
+    /// match validator.decode::<MyClaims>(asap_token, &whitelisted_issuers) {
     ///     Ok(token_data) => {
     ///         // Token is a valid ASAP token and is authorised.
     ///         println!("claims {:?}", token_data.claims);
@@ -489,7 +489,7 @@ impl Validator {
     ///     Err(e) => eprintln!("{:?}", e)
     /// }
     /// ```
-    pub fn decode<T>(&mut self, token: &str, authorized_subjects: &[&str]) -> Result<TokenData<T>>
+    pub fn decode<T>(&mut self, token: &str, whitelisted_issuers: &[&str]) -> Result<TokenData<T>>
     where
         T: DeserializeOwned + Serialize,
     {
@@ -519,7 +519,7 @@ impl Validator {
         self.validate(
             &kid,
             &from_str(&to_string(&data.claims)?)?,
-            authorized_subjects,
+            whitelisted_issuers,
         )?;
 
         // If everything looks good, and the key is not yet cached, then store
@@ -553,7 +553,7 @@ impl Validator {
         &mut self,
         kid: &str,
         claims: &Map<String, Value>,
-        authorized_subjects: &[&str],
+        whitelisted_issuers: &[&str],
     ) -> Result<()> {
         let now = Utc::now().timestamp();
         let iss = extract_claim::<String>(claims, "iss")?;
@@ -623,11 +623,11 @@ impl Validator {
         let sub = extract_claim::<String>(claims, "sub").unwrap_or(iss);
 
         // Here, we verify that the token's subject is contained in the
-        // `authorized_subjects` vec. This check isn't explicitly defined in the
+        // `whitelisted_issuers` vec. This check isn't explicitly defined in the
         // spec, but the spec suggests that a resource server should decide if
         // the issuer of the token is authorised to make requests (by checking
         // checking either the `iss` or the `sub` claim). Thus, we provide
-        // `authorized_subjects` as an argument to `Validator.decode` so the
+        // `whitelisted_issuers` as an argument to `Validator.decode` so the
         // user of this library may pass a vec of strings to further verify that
         // the token is valid.
         //
@@ -644,8 +644,8 @@ impl Validator {
         // - The resource server MAY decide if the combination of verified
         //      issuer and effective subject is authorised to make the requested
         //      business operation.
-        if !authorized_subjects.contains(&sub.as_ref()) {
-            let subjects = authorized_subjects.iter().map(|&x| x.to_owned()).collect();
+        if !whitelisted_issuers.contains(&sub.as_ref()) {
+            let subjects = whitelisted_issuers.iter().map(|&x| x.to_owned()).collect();
             return Err(ValidatorError::UnauthorizedSubject(sub, subjects).into());
         }
 

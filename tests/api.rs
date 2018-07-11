@@ -80,8 +80,8 @@ fn gen_token(generator: &Generator, claims: &Claims) -> String {
 
 // Given the validator and token, return the decoded token.
 // Panic on any error.
-fn val_token<T: Serialize + DeserializeOwned>(validator: &mut Validator, token: &str, authorized_subjects: &Vec<&str>) -> jwt::TokenData<T> {
-    match validator.decode(token, authorized_subjects) {
+fn val_token<T: Serialize + DeserializeOwned>(validator: &mut Validator, token: &str, whitelisted_issuers: &Vec<&str>) -> jwt::TokenData<T> {
+    match validator.decode(token, whitelisted_issuers) {
         Ok(token_data) => token_data,
         Err(e) => {
             eprintln!("Error validating token: {}", e);
@@ -417,12 +417,12 @@ fn validates_if_encounters_unauthorized_subject() {
     // Should succeed since `Claims::default().iss = "service01"`.
     val_token::<Claims>(&mut validator, &gen_token(&generator, &claims), &vec!["service01"]);
 
-    // Should fail since `iss` is now not found in `authorized_subjects`.
+    // Should fail since `iss` is now not found in `whitelisted_issuers`.
     claims.iss = String::from("service01");
     match validator.decode::<Claims>(&gen_token(&generator, &claims), &vec!["service02"]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "Unknown or unauthorized subject \"service01\". \
-            The `sub` claim (or `iss`) must exist in `authorized_subjects` [\"service02\"]")
+            The `sub` claim (or `iss`) must exist in `whitelisted_issuers` [\"service02\"]")
     }
 }
 
@@ -467,7 +467,7 @@ fn iss_is_assumed_if_sub_is_undefined() {
     match validator.decode::<Claims>(&token_without_sub, &expected_subjects) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "Unknown or unauthorized subject \"service01\". \
-            The `sub` claim (or `iss`) must exist in `authorized_subjects` [\"my-client-service\"]")
+            The `sub` claim (or `iss`) must exist in `whitelisted_issuers` [\"my-client-service\"]")
     }
 }
 
@@ -569,8 +569,8 @@ fn it_uses_the_fallback_keyserver() {
         .build();
 
     let token = gen_token(&generator, &claims);
-    let authorized_subjects = vec!["service01"];
-    let token_data = val_token(&mut validator, &token, &authorized_subjects);
+    let whitelisted_issuers = vec!["service01"];
+    let token_data = val_token(&mut validator, &token, &whitelisted_issuers);
     assert_eq!(claims, token_data.claims);
 }
 

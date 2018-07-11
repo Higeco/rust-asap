@@ -106,9 +106,9 @@
 //! }
 //!
 //! let asap_token = "<your-token-here>";
-//! let authorized_subjects = vec!["list", "of", "authorized", "subjects"];
+//! let whitelisted_issuers = vec!["list", "of", "authorized", "subjects"];
 //!
-//! match validator.decode::<MyClaims>(asap_token, &authorized_subjects) {
+//! match validator.decode::<MyClaims>(asap_token, &whitelisted_issuers) {
 //!     Ok(token_data) => {
 //!         // Here you have a successfully verified and accepted access token!
 //!         //
@@ -131,19 +131,17 @@
 //! ```
 //!
 //! That's really it! It should be simple - that's the goal.
-//! Thanks for using this crate!
 
-extern crate serde;
-extern crate serde_json;
-extern crate jsonwebtoken as jwt;
-extern crate reqwest;
 extern crate chrono;
 #[macro_use] extern crate failure;
 #[macro_use] extern crate failure_derive;
+extern crate jsonwebtoken as jwt;
 extern crate pem;
+extern crate reqwest;
+extern crate serde;
+extern crate serde_json;
 
-
-mod util;
 mod errors;
+mod util;
 pub mod generator;
 pub mod validator;

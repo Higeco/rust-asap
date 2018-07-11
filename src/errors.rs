@@ -69,6 +69,6 @@ pub enum ValidatorError {
     UnrecognisedAudience(Vec<String>),
 
     #[fail(display = "Unknown or unauthorized subject {:?}. The `sub` claim \
-        (or `iss`) must exist in `authorized_subjects` {:?}", _0, _1)]
+        (or `iss`) must exist in `whitelisted_issuers` {:?}", _0, _1)]
     UnauthorizedSubject(String, Vec<String>)
 }
