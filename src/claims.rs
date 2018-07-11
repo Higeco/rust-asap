@@ -49,15 +49,10 @@ pub enum Aud {
   Many(Vec<String>),
 }
 
-// TODO: I don't want this to be public?
-// TODO: guard against this overwriting the required claims?
-// TODO: test deeply nested structs in extra_claims
-
 /// A claims struct that contains the required ASAP fields.
 #[derive(Serialize, Deserialize)]
 pub struct Claims<T> {
     /// SPEC: A value that identifies the resource server.
-    #[serde(rename = "aud")]
     aud: Aud,
     /// SPEC: The service identifier of the client.
     iss: String,
@@ -76,7 +71,7 @@ pub struct Claims<T> {
     /// recommended. There is a hard limit of one hour.
     exp: i64,
 
-    /// Extra claims may be added to the token. This value will be flattened
+    /// Extra claims may be added to the token. These values will be serialised
     /// into the root of the token. If `None` is passed then no extra claims
     /// will be added to the token.
     ///
@@ -87,14 +82,14 @@ pub struct Claims<T> {
 
 /// A nice helper that is used when creating the `Claims` struct for token
 /// generation.
-pub struct ClaimsBuilder {
+pub(crate) struct ClaimsBuilder {
     iss: String,
     lifespan: i64,
 }
 
 impl ClaimsBuilder {
     /// Creates a new `ClaimsBuilder` that may be used to build `Claims` structs.
-    pub fn new(iss: String) -> ClaimsBuilder {
+    pub(crate) fn new(iss: String) -> ClaimsBuilder {
         let lifespan = DEFAULT_TOKEN_LIFESPAN;
         ClaimsBuilder { iss, lifespan }
     }
@@ -102,14 +97,14 @@ impl ClaimsBuilder {
     /// Sets the lifespan of `Claims` structs built by this `ClaimsBuilder`.
     ///
     /// Defaults to `DEFAULT_TOKEN_LIFESPAN`.
-    pub fn lifespan(&mut self, lifespan: i64) -> &mut ClaimsBuilder {
+    pub(crate) fn lifespan(&mut self, lifespan: i64) -> &mut ClaimsBuilder {
         self.lifespan = lifespan;
         self
     }
 
     /// Creates a `Claims` struct. This method may be called multiple times to
     /// continue creating different `Claims` structs with the same configuration.
-    pub fn build<T: Serialize>(&mut self, aud: Aud, extra_claims: Option<T>) -> Claims<T> {
+    pub(crate) fn build<T: Serialize>(&mut self, aud: Aud, extra_claims: Option<T>) -> Claims<T> {
         let iss = self.iss.clone();
         let jti = generate_jti();
 
