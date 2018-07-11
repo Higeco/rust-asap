@@ -8,8 +8,8 @@ version = "0.3.1"
 license = "MIT"
 authors = ["acheronfail <acheronfail@gmail.com>"]
 keywords = ["asap", "jwt", "api", "token", "authorisation"]
-homepage = "https://bitbucket.org/acheronfail/rust-asap/"
-repository = "https://bitbucket.org/acheronfail/rust-asap/"
+homepage = "https://bitbucket.org/cosmotherly/rust-asap/"
+repository = "https://bitbucket.org/cosmotherly/rust-asap/"
 description = "An implementation of ASAP for rust."
 
 [dependencies]
