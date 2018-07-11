@@ -44,7 +44,7 @@ use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use serde_json::value::Value;
 use serde_json::{from_str, to_string, Map};
-use std::cmp::{max, min};
+use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io::Read;
@@ -54,8 +54,15 @@ use errors::{Result, ResultExt, ValidatorError};
 use util::{extract_aud_from_claims, extract_claim};
 
 /// The duration of how long the validator should cache public keys fetched
-/// from the keyserver. Defaults to 10 minutes.
+/// from the keyserver.
+///
+/// Defaults to 10 minutes.
 pub const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(600);
+
+/// The max lifespan of a token before it's considered expired.
+///
+/// Defaults to one hour (as per ASAP spec).
+pub const DEFAULT_MAX_LIFESPAN: i64 = 60 * 60;
 
 /// Options used to configure an ASAP Validator.
 pub struct ValidatorBuilder {
@@ -145,10 +152,12 @@ impl ValidatorBuilder {
     }
 
     /// Sets the `max_lifespan` for the `Validator`.
-    /// Valid values are from `0` to `3600` inclusive. Any other value outside
-    /// this range will be clamped.
     ///
-    /// Defaults to `3600`.
+    /// Note that while the ASAP spec defines a hard upper limit of `3600`
+    /// seconds, some uses may require a higher limit (eg: when validating
+    /// session tokens). You may use this to set a higher limit.
+    ///
+    /// Defaults to `3600` seconds.
     pub fn max_lifespan(&mut self, max_lifespan: i64) -> &mut ValidatorBuilder {
         self.max_lifespan = Some(max_lifespan);
         self
@@ -196,7 +205,7 @@ impl ValidatorBuilder {
 
         Validator {
             leeway: self.leeway.unwrap_or(0),
-            max_lifespan: max(0, min(3600, self.max_lifespan.unwrap_or(3600))),
+            max_lifespan: max(0, self.max_lifespan.unwrap_or(DEFAULT_MAX_LIFESPAN)),
             jwt_validator,
 
             keyserver_url: self.keyserver_url.take().unwrap(),

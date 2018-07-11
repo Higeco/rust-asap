@@ -154,9 +154,7 @@ impl Generator {
         let mut header = jwt::Header::new(jwt::Algorithm::RS256);
         header.kid = Some(kid);
 
-        // TODO: set lifespan
         let claims_builder = ClaimsBuilder::new(iss);
-
         Generator {
             header,
             private_key,

@@ -3,7 +3,8 @@ use serde::ser::Serialize;
 
 use util::generate_jti;
 
-pub const DEFAULT_LIFESPAN: i64 = 3600;
+// Default token lifespan.
+pub const DEFAULT_TOKEN_LIFESPAN: i64 = 60 * 60;
 
 /// TODO:
 #[derive(Serialize, Deserialize)]
@@ -50,11 +51,8 @@ pub struct ClaimsBuilder {
 
 impl ClaimsBuilder {
     pub fn new(iss: String) -> ClaimsBuilder {
-        let lifespan = DEFAULT_LIFESPAN;
-        ClaimsBuilder {
-            iss,
-            lifespan,
-        }
+        let lifespan = DEFAULT_TOKEN_LIFESPAN;
+        ClaimsBuilder { iss, lifespan }
     }
 
     pub fn lifespan(&mut self, lifespan: i64) -> &mut ClaimsBuilder {

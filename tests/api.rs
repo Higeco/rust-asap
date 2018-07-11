@@ -10,18 +10,14 @@ extern crate serde_derive;
 use jwt::TokenData;
 use std::env;
 use std::time::Duration;
-use serde::ser::Serialize;
-use serde::de::DeserializeOwned;
-use serde_json::{to_string};
 use chrono::Utc;
 
-use asap::claims::{Aud, DefaultClaims, Claims, DEFAULT_LIFESPAN};
+use asap::claims::{Aud, DefaultClaims, Claims, DEFAULT_TOKEN_LIFESPAN};
 use asap::generator::{Generator};
 use asap::validator::{Validator, ValidatorBuilder};
 
 // A private key to use to sign the tokens.
 const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/service01/1530402390-private.der");
-const PRIVATE_KEY_02: &[u8] = include_bytes!("../support/keys/service02/1530402393-private.der");
 // The issuer of the service generating the token.
 const ISS_01: &'static str = "service01";
 const ISS_02: &'static str = "service02";
@@ -69,7 +65,7 @@ fn validate_claims(token_data: TokenData<Claims<ExtraClaims>>, aud: Aud, extra_c
     assert_eq!(&token_data.claims.iss, ISS_01);
     assert_eq!(token_data.claims.aud, aud);
     assert_eq!(token_data.claims.jti.len(), 20);
-    assert_eq!(token_data.claims.exp - token_data.claims.iat, DEFAULT_LIFESPAN);
+    assert_eq!(token_data.claims.exp - token_data.claims.iat, DEFAULT_TOKEN_LIFESPAN);
     assert_eq!(token_data.claims.extra_claims, extra_claims);
 }
 
