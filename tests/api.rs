@@ -12,6 +12,7 @@ use serde_json::map::Map;
 use serde_json::value::{from_value, Value};
 use serde_json::{to_string, from_str};
 use std::env;
+use std::thread;
 use std::time::Duration;
 use chrono::Utc;
 
@@ -166,68 +167,6 @@ fn instantiates_from_environment() {
     env::remove_var("ASAP_PRIVATE_KEY");
 }
 
-// #[test]
-// fn generator_checks_claims_are_valid() {
-//     let mut generator = default_generator();
-//     generator.validate_claims = true;
-
-//     // Default claims struct.
-//     let c = Claims::default();
-
-//     // Helper to easily re-use a `String`.
-//     let o = |s: &str| s.to_owned();
-
-//     // Should pass with default Claims struct.
-//     assert!(generator.token(&c).is_ok());
-
-//     // Should fail if `iss` claim doesn't match the start of the `kid`:
-//     let bad_iss = Claims { iss: String::from("foo"), iat: c.iat, exp: c.exp, aud: o(&c.aud), jti: o(&c.jti) };
-//     assert!(generator.token(&bad_iss).is_err());
-//     assert!(generator.validate_claims(&bad_iss).is_err());
-
-//     // Should fail without an `iss` claim:
-//     #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//     struct ClaimsNoIss { iat: i64, exp: i64, aud: String, jti: String }
-//     let no_iss = ClaimsNoIss { iat: c.iat, exp: c.exp, aud: o(&c.aud), jti: o(&c.jti) };
-//     assert!(generator.token(&no_iss).is_err());
-//     assert!(generator.validate_claims(&no_iss).is_err());
-
-//     // Should fail without an `exp` claim:
-//     #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//     struct ClaimsNoExp { iat: i64, iss: String, aud: String, jti: String }
-//     let no_exp = ClaimsNoExp { iat: c.iat, iss: o(&c.iss), aud: o(&c.aud), jti: o(&c.jti) };
-//     assert!(generator.token(&no_exp).is_err());
-//     assert!(generator.validate_claims(&no_exp).is_err());
-
-//     // Should fail without an `iat` claim:
-//     #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//     struct ClaimsNoIat { exp: i64, iss: String, aud: String, jti: String }
-//     let no_iat = ClaimsNoIat { exp: c.exp, iss: o(&c.iss), aud: o(&c.aud), jti: o(&c.jti) };
-//     assert!(generator.token(&no_iat).is_err());
-//     assert!(generator.validate_claims(&no_iat).is_err());
-
-//     // Should fail without an `jti` claim:
-//     #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//     struct ClaimsNoJti { iat: i64, exp: i64, iss: String, aud: String }
-//     let no_jti = ClaimsNoJti { iat: c.iat, exp: c.exp, iss: o(&c.iss), aud: o(&c.aud) };
-//     assert!(generator.token(&no_jti).is_err());
-//     assert!(generator.validate_claims(&no_jti).is_err());
-
-//     // Should fail without an `aud` claim:
-//     #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//     struct ClaimsNoAud { iat: i64, exp: i64, iss: String, jti: String }
-//     let no_aud = ClaimsNoAud { iat: c.iat, exp: c.exp, iss: o(&c.iss), jti: o(&c.jti) };
-//     assert!(generator.token(&no_aud).is_err());
-//     assert!(generator.validate_claims(&no_aud).is_err());
-
-//     // Should fail if `exp` - `iat` is greater than one hour:
-//     #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//     struct ClaimsBadLifespan { iat: i64, exp: i64, iss: String, aud: String, jti: String }
-//     let bad_lifespan = ClaimsBadLifespan { iat: c.iat, exp: c.iat + 3601, iss: o(&c.iss), aud: o(&c.aud), jti: o(&c.jti) };
-//     assert!(generator.token(&bad_lifespan).is_err());
-//     assert!(generator.validate_claims(&bad_lifespan).is_err());
-// }
-
 #[test]
 fn validates_nbf_is_after_current_time() {
     let now = Utc::now().timestamp();
@@ -251,96 +190,63 @@ fn validates_nbf_is_after_current_time() {
     let _ = validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]).unwrap();
 }
 
-// #[test]
-// fn validates_unset_nbf_is_after_current_time() {
-//     let now = Utc::now().timestamp();
-//     let generator = default_generator();
-//     let mut validator = get_validator_builder().build();
+#[test]
+fn validates_exp_is_before_current_time() {
+    let mut generator = default_generator();
+    let mut validator = get_validator_builder().build();
 
-//     // The `nbf` claim will default to `iat`.
-//     let mut claims = Claims::default();
+    // Generate a token which expires in one second, then wait two before validating.
+    generator.set_max_lifespan(1);
+    let token = generator.token::<DefaultClaims>(default_aud(), None).unwrap();
+    thread::sleep(Duration::from_secs(2));
 
-//     // Validation should fail since `nbf` (defaulting to `iat`) is after current time.
-//     claims.iat = now + 30;
-//     match validator.decode::<Claims>(&generator.token(&claims).unwrap(), &vec![ISS_01]) {
-//         Ok(_) => panic!("Validation should fail."),
-//         Err(e) => assert!(format!("{}", e).starts_with("Immature jwt signature"))
-//     }
+    // Validation should fail since `exp` is before current time.
+    match validator.decode::<DefaultClaims>(&token, &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert!(format!("{}", e).starts_with("Expired jwt signature"))
+    }
+}
 
-//     // Validation should succeed since `nbf` (defaulting to `iat`) is before current time.
-//     claims.iat = now - 30;
-//     val_token::<Claims>(&mut validator, &generator.token(&claims).unwrap(), &vec![ISS_01]);
-// }
+#[test]
+fn validates_if_max_lifespan_is_exceeded() {
+    let mut generator = default_generator();
+    let mut validator = get_validator_builder().build();
 
-// #[test]
-// fn validates_exp_is_before_current_time() {
-//     let now = Utc::now().timestamp();
-//     let mut claims = Claims::default();
+    // Validation should succeed since `max_lifespan` is below default hard limit.
+    let token = generator.token::<DefaultClaims>(default_aud(), None).unwrap();
+    let _ = validator.decode::<DefaultClaims>(&token, &vec![ISS_01]).unwrap();
 
-//     let generator = default_generator();
-//     let mut validator = get_validator_builder().build();
+    // Validation should fail since `max_lifespan` is above hard limit.
+    generator.set_max_lifespan(3601);
+    let token = generator.token::<DefaultClaims>(default_aud(), None).unwrap();
+    match validator.decode::<DefaultClaims>(&token, &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!(format!("{}", e), "Token contained a lifespan greater than the \
+            `max_lifespan` (hard limit of 3600 seconds)")
+    }
+}
 
-//     // Validation should fail since `exp` is before current time.
-//     claims.exp = now - 30;
-//     match validator.decode::<Claims>(&generator.token(&claims).unwrap(), &vec![ISS_01]) {
-//         Ok(_) => panic!("Validation should fail."),
-//         Err(e) => assert!(format!("{}", e).starts_with("Expired jwt signature"))
-//     }
+#[test]
+fn validates_if_custom_max_lifespan_is_exceeded() {
+    let mut generator = default_generator();
+    let mut validator = get_validator_builder()
+        .max_lifespan(60)
+        .build();
 
-//     // Validation should fail since `exp` is after current time.
-//     claims.exp = now + 30;
-//     val_token::<Claims>(&mut validator, &generator.token(&claims).unwrap(), &vec![ISS_01]);
-// }
+    // Validation should succeed since `max_lifespan` is below custom limit.
+    generator.set_max_lifespan(30);
+    let token = generator.token::<DefaultClaims>(default_aud(), None).unwrap();
+    let _ = validator.decode::<DefaultClaims>(&token, &vec![ISS_01]).unwrap();
 
-// #[test]
-// fn validates_if_max_lifespan_is_exceeded() {
-//     let now = Utc::now().timestamp();
-//     let generator = default_generator();
-//     let mut claims = Claims::default();
-
-//     let mut validator = get_validator_builder()
-//         .max_lifespan(9_999_999_999)
-//         .build();
-
-//     // Validation should succeed since `max_lifespan` is below hard limit.
-//     claims.iat = now;
-//     claims.exp = now + 60;
-//     val_token::<Claims>(&mut validator, &generator.token(&claims).unwrap(), &vec![ISS_01]);
-
-//     // Validation should fail since `max_lifespan` is above hard limit.
-//     claims.iat = now;
-//     claims.exp = now + 3601;
-//     match validator.decode::<Claims>(&generator.token(&claims).unwrap(), &vec![ISS_01]) {
-//         Ok(_) => panic!("Validation should fail."),
-//         Err(e) => assert_eq!(format!("{}", e), "Token contained a lifespan greater than the \
-//             `max_lifespan` (hard limit of 3600 seconds)")
-//     }
-// }
-
-// #[test]
-// fn validates_if_custom_max_lifespan_is_exceeded() {
-//     let now = Utc::now().timestamp();
-//     let generator = default_generator();
-//     let mut claims = Claims::default();
-
-//     let mut validator = get_validator_builder()
-//         .max_lifespan(60)
-//         .build();
-
-//     // Validation should succeed since `max_lifespan` is below custom limit.
-//     claims.iat = now;
-//     claims.exp = now + 30;
-//     val_token::<Claims>(&mut validator, &generator.token(&claims).unwrap(), &vec![ISS_01]);
-
-//     // Validation should fail since `max_lifespan` is above custom limit.
-//     claims.iat = now;
-//     claims.exp = now + 120;
-//     match validator.decode::<Claims>(&generator.token(&claims).unwrap(), &vec![ISS_01]) {
-//         Ok(_) => panic!("Validation should fail."),
-//         Err(e) => assert_eq!(format!("{}", e), "Token contained a lifespan greater than the \
-//             `max_lifespan` (hard limit of 3600 seconds)")
-//     }
-// }
+    // Validation should fail since `max_lifespan` is above custom limit.
+    generator.set_max_lifespan(120);
+    let token = generator.token::<DefaultClaims>(default_aud(), None).unwrap();
+    match validator.decode::<DefaultClaims>(&token, &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!(format!("{}", e), "Token contained a lifespan greater than the \
+            `max_lifespan` (hard limit of 3600 seconds)")
+    }
+}
 
 #[test]
 fn validates_if_encounters_unrecognized_audience() {
@@ -348,13 +254,13 @@ fn validates_if_encounters_unrecognized_audience() {
     let mut validator = get_validator_builder().build();
 
     // Should succeed since `Claims::default().aud = ISS_01`.
-    let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();
-    let _ = validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]).unwrap();
+    let token = generator.token::<DefaultClaims>(default_aud(), None).unwrap();
+    let _ = validator.decode::<DefaultClaims>(&token, &vec![ISS_01]).unwrap();
 
     // Should fail since audience does not match resource server's audience.
     let aud = Aud::One("not-whitelisted".to_string());
     let token = generator.token::<DefaultClaims>(aud, None).unwrap();
-    match validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]) {
+    match validator.decode::<DefaultClaims>(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "Resource server audience not found in `aud` claims of \
             token [\"not-whitelisted\"]")
