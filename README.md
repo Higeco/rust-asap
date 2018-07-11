@@ -2,6 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/asap.svg)](https://crates.io/crates/asap)
 [![dependency status](https://deps.rs/repo/bitbucket/cosmotherly/rust-asap/status.svg)](https://deps.rs/repo/bitbucket/cosmotherly/rust-asap)
+[![build status](https://img.shields.io/bitbucket/pipelines/cosmotherly/rust-asap.svg)](https://bitbucket.org/cosmotherly/rust-asap/addon/pipelines/home#!/)
 
 [Documentation](https://docs.rs/asap).
 
