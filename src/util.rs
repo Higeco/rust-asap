@@ -7,8 +7,9 @@ use serde_json::{from_value, Value};
 
 use errors::{Result, ValidatorError};
 
-// Helper fn to extract the `aud` claim (which may be a string or array of
-// strings) from a claims map.
+// Extract the `aud` claim (which may be a string or array of strings) from a
+// claims map.
+//
 // Always returns the `aud` claims as a `Vec<String>`.
 pub fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String>> {
     if let Some(value) = claims.get("aud") {
@@ -22,7 +23,6 @@ pub fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String
     }
 }
 
-// Helper fn to extract the given claim from a claims map.
 pub fn extract_claim<T>(claims: &Map<String, Value>, key: &str) -> Result<T>
 where
     T: DeserializeOwned,
