@@ -4,10 +4,13 @@ extern crate jsonwebtoken as jwt;
 extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
-#[macro_use]
-extern crate serde_derive;
+#[macro_use] extern crate serde_derive;
 
 use jwt::TokenData;
+use serde::de::DeserializeOwned;
+use serde_json::map::Map;
+use serde_json::value::{from_value, Value};
+use serde_json::{to_string, from_str};
 use std::env;
 use std::time::Duration;
 use chrono::Utc;
@@ -61,12 +64,26 @@ fn default_generator() -> Generator {
     )
 }
 
-fn validate_claims(token_data: TokenData<Claims<ExtraClaims>>, aud: Aud, extra_claims: Option<ExtraClaims>) {
-    assert_eq!(&token_data.claims.iss, ISS_01);
-    assert_eq!(token_data.claims.aud, aud);
-    assert_eq!(token_data.claims.jti.len(), 20);
-    assert_eq!(token_data.claims.exp - token_data.claims.iat, DEFAULT_TOKEN_LIFESPAN);
+fn extract_claim<T: DeserializeOwned>(map: &Map<String, Value>, key: &str) -> T {
+    from_value::<T>(map.get(key).unwrap().clone()).unwrap()
+}
+
+fn validate_claims(token_data: TokenData<Claims<ExtraClaims>>, expected_aud: Aud, extra_claims: Option<ExtraClaims>) {
     assert_eq!(token_data.claims.extra_claims, extra_claims);
+
+    let claims_as_map: Map<_, _> = from_str(&to_string(&token_data.claims).unwrap()).unwrap();
+    let aud = extract_claim::<Aud>(&claims_as_map, "aud");
+    let iss = extract_claim::<String>(&claims_as_map, "iss");
+    let jti = extract_claim::<String>(&claims_as_map, "jti");
+    let iat = extract_claim::<i64>(&claims_as_map, "iat");
+    let exp = extract_claim::<i64>(&claims_as_map, "exp");
+    let now = Utc::now().timestamp();
+
+    assert_eq!(aud, expected_aud);
+    assert_eq!(&iss, ISS_01);
+    assert_eq!(jti.len(), 20);
+    assert_eq!(exp - iat, DEFAULT_TOKEN_LIFESPAN);
+    assert!(iat > now - 2 && iat < now + 2);
 }
 
 /**
