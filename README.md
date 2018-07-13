@@ -37,22 +37,16 @@ And see [the documentation and API](https://docs.rs/asap) which should be straig
 
 ## Development/Testing
 
-Currently, running the tests has some limitations:
+To run tests:
 
-* The tests need a local keyserver running at `http://localhost:8000`
-	- [A sample mini-keyserver is provided](./support/keyserver) in this repository
-* The tests need to be run serially
-	- Since they also test that requests were made to the keyserver, etc.
-
-To run the tests, perform the following:
-
-```bash
-# Runs a simple keyserver.
-cargo run -p keyserver
-
-# In a different shell, run the tests with the following command:
-./support/test.sh
 ```
+cargo test
+```
+
+Note that some tests need a keyserver to work. They start up the [mini
+keyserver in the workspace](./support/keyserver) on a random port at the
+beginning of the test. Because each test has its own keyserver, they can
+run in parallel.
 
 ## References
 
