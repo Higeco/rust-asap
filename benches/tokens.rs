@@ -3,6 +3,7 @@ extern crate asap;
 extern crate bencher;
 extern crate chrono;
 extern crate jsonwebtoken as jwt;
+extern crate keyserver;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -11,6 +12,7 @@ use asap::claims::{DefaultClaims, Aud};
 use asap::generator::Generator;
 use asap::validator::Validator;
 use bencher::Bencher;
+use keyserver::Keyserver;
 
 // A private key to use to sign the tokens.
 const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/service01/1530402390-private.der");
@@ -18,8 +20,6 @@ const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/service01/15304023
 const KID_01: &'static str = "service01/1530402390-public.der";
 // The issuer of the token.
 const ISS_01: &'static str = "service01";
-// The URL of our test keyserver.
-const KS_URL: &'static str = "http://localhost:8000/";
 
 fn default_generator() -> Generator {
     Generator::new(ISS_01.to_string(), KID_01.to_string(), PRIVATE_KEY_01.to_vec())
@@ -56,7 +56,8 @@ fn speed_of_validating_tokens(b: &mut Bencher) {
     let extra_claims: Option<DefaultClaims> = None;
     let token = generator.token(default_aud(), extra_claims).unwrap();
 
-    let mut validator = Validator::builder(KS_URL.to_string(), ISS_01.to_string())
+    let keyserver = Keyserver::start();
+    let mut validator = Validator::builder(keyserver.url().to_string(), ISS_01.to_string())
         .build();
 
     // Validate once to cache the public key:
@@ -98,7 +99,7 @@ fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
     let extra_claims: Option<DefaultClaims> = None;
     let token = generator.token(default_aud(), extra_claims).unwrap();
 
-    let mut validator = Validator::builder(KS_URL.to_string(), ISS_01.to_string())
+    let mut validator = Validator::builder("unused".to_string(), ISS_01.to_string())
         .build();
     b.iter(|| validator.dangerous_unsafe_decode::<DefaultClaims>(&token).unwrap());
 }

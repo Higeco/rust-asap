@@ -1,23 +1,26 @@
 extern crate asap;
 extern crate chrono;
 extern crate jsonwebtoken as jwt;
+extern crate keyserver;
 extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
-#[macro_use] extern crate serde_derive;
+#[macro_use]
+extern crate serde_derive;
 
+use chrono::Utc;
 use jwt::TokenData;
+use keyserver::Keyserver;
 use serde::de::DeserializeOwned;
 use serde_json::map::Map;
 use serde_json::value::{from_value, Value};
-use serde_json::{to_string, from_str};
+use serde_json::{from_str, to_string};
 use std::env;
 use std::thread;
 use std::time::Duration;
-use chrono::Utc;
 
-use asap::claims::{Aud, DefaultClaims, Claims, DEFAULT_TOKEN_LIFESPAN};
-use asap::generator::{Generator};
+use asap::claims::{Aud, Claims, DefaultClaims, DEFAULT_TOKEN_LIFESPAN};
+use asap::generator::Generator;
 use asap::validator::{Validator, ValidatorBuilder};
 
 // A private key to use to sign the tokens.
@@ -28,8 +31,6 @@ const ISS_02: &'static str = "service02";
 // The path of the public key in the keyserver.
 const KID_01: &'static str = "service01/1530402390-public.der";
 const KID_02: &'static str = "service02/1530402393-public.der";
-// The URL of our test keyserver.
-const KS_URL: &'static str = "http://localhost:8000/";
 
 // Sample struct for extra claims.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -48,10 +49,11 @@ impl ExtraClaims {
     }
 }
 
-fn get_validator_builder() -> ValidatorBuilder {
+fn get_validator_builder(keyserver_url: &str) -> ValidatorBuilder {
     let resource_server_audience = String::from(ISS_01);
-    Validator::builder(String::from(KS_URL), resource_server_audience)
+    Validator::builder(String::from(keyserver_url), resource_server_audience)
 }
+
 
 fn default_aud() -> Aud {
     Aud::One(ISS_01.to_string())
@@ -87,48 +89,35 @@ fn validate_claims(token_data: TokenData<Claims<ExtraClaims>>, expected_aud: Aud
     assert!(iat > now - 2 && iat < now + 2);
 }
 
-/**
- * Helpers for interfacing with our test keyserver.
- */
 
-fn ks_reset() {
-    reqwest::get(&format!("{}reset", KS_URL)).unwrap();
-}
 
-fn ks_count() -> String {
-    reqwest::get(&format!("{}count", KS_URL)).unwrap().text().unwrap()
-}
+
 
 /**
  * Tests.
  *
- * Since these rely on hit counts on our test keyserver, these tests must be
- * run serially (otherwise the counts will interfere with each other).
- *
- * TODO: Surely, there's a better way to do this/run them in parallel.
+ * Each test that needs a keyserver starts up a new one on an available port.
+ * That means they can be run in parallel.
  */
 
 #[test]
 fn keyserver_works() {
     // Count should start at 0.
-    ks_reset();
-    assert_eq!(ks_count(), "0");
+    let keyserver = Keyserver::start();
+    assert_eq!(keyserver.count(), "0");
 
     // Make 100 requests.
     for _ in 0..100 {
-        reqwest::get(&format!("{}{}", KS_URL, KID_01)).unwrap();
+        reqwest::get(&format!("{}{}", keyserver.url(), KID_01)).unwrap();
     }
-    assert_eq!(ks_count(), "100");
-
-    // Count should reset back to 0.
-    ks_reset();
-    assert_eq!(ks_count(), "0");
+    assert_eq!(keyserver.count(), "100");
 }
 
 #[test]
 fn it_works() {
+    let keyserver = Keyserver::start();
     let mut generator = default_generator();
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     // Test with no extra claims.
     let token = generator.token::<ExtraClaims>(default_aud(), None).unwrap();
@@ -143,10 +132,12 @@ fn it_works() {
 
 #[test]
 fn instantiates_from_environment() {
+    let keyserver = Keyserver::start();
+
     // Setup environment for the validator.
     env::set_var("ASAP_SERVER_AUDIENCE", ISS_01);
-    env::set_var("ASAP_KEYSERVER_URL", KS_URL);
-    env::set_var("ASAP_FALLBACK_KEYSERVER_URL", KS_URL);
+    env::set_var("ASAP_KEYSERVER_URL", keyserver.url());
+    env::set_var("ASAP_FALLBACK_KEYSERVER_URL", keyserver.url());
     // Setup environment for the generator.
     env::set_var("ASAP_KEY_ID", KID_01);
     env::set_var("ASAP_ISSUER", ISS_01);
@@ -169,9 +160,11 @@ fn instantiates_from_environment() {
 
 #[test]
 fn validates_nbf_is_after_current_time() {
+    let keyserver = Keyserver::start();
+
     let now = Utc::now().timestamp();
     let mut generator = default_generator();
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
     struct ExtraClaims { nbf: i64 }
@@ -192,8 +185,9 @@ fn validates_nbf_is_after_current_time() {
 
 #[test]
 fn validates_exp_is_before_current_time() {
+    let keyserver = Keyserver::start();
     let mut generator = default_generator();
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     // Generate a token which expires in one second, then wait two before validating.
     generator.set_max_lifespan(1);
@@ -209,8 +203,9 @@ fn validates_exp_is_before_current_time() {
 
 #[test]
 fn validates_if_max_lifespan_is_exceeded() {
+    let keyserver = Keyserver::start();
     let mut generator = default_generator();
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     // Validation should succeed since `max_lifespan` is below default hard limit.
     let token = generator.token::<DefaultClaims>(default_aud(), None).unwrap();
@@ -228,8 +223,9 @@ fn validates_if_max_lifespan_is_exceeded() {
 
 #[test]
 fn validates_if_custom_max_lifespan_is_exceeded() {
+    let keyserver = Keyserver::start();
     let mut generator = default_generator();
-    let mut validator = get_validator_builder()
+    let mut validator = get_validator_builder(keyserver.url())
         .max_lifespan(60)
         .build();
 
@@ -250,8 +246,9 @@ fn validates_if_custom_max_lifespan_is_exceeded() {
 
 #[test]
 fn validates_if_encounters_unrecognized_audience() {
+    let keyserver = Keyserver::start();
     let mut generator = default_generator();
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     // Should succeed since `Claims::default().aud = ISS_01`.
     let token = generator.token::<DefaultClaims>(default_aud(), None).unwrap();
@@ -269,8 +266,9 @@ fn validates_if_encounters_unrecognized_audience() {
 
 #[test]
 fn works_with_aud_as_vec() {
+    let keyserver = Keyserver::start();
     let mut generator = default_generator();
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     // Should succeed since claims vec contains `ISS_01`.
     let aud = Aud::Many(vec!["foo".to_string(), ISS_01.to_string()]);
@@ -289,8 +287,9 @@ fn works_with_aud_as_vec() {
 
 #[test]
 fn works_with_aud_as_string() {
+    let keyserver = Keyserver::start();
     let mut generator = default_generator();
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     // Should succeed since whitelisted_issuers contains `ISS_01`.
     let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();
@@ -307,12 +306,14 @@ fn works_with_aud_as_string() {
 
 #[test]
 fn iss_is_assumed_if_sub_is_undefined() {
+    let keyserver = Keyserver::start();
+
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
     struct ExtraClaims { sub: String }
     let extra_claims = ExtraClaims { sub: ISS_02.to_string() };
 
     let mut generator = default_generator();
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     let token_with_sub = generator.token(default_aud(), Some(extra_claims)).unwrap();
     let token_no_sub = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();
@@ -333,7 +334,8 @@ fn iss_is_assumed_if_sub_is_undefined() {
 
 #[test]
 fn validates_kid_is_owned_by_isser() {
-    let mut validator = get_validator_builder().build();
+    let keyserver = Keyserver::start();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     // Default implementations should pass because:
     // - `default_generator()` has `iss = "service01"` and `kid = "service01/..."`
@@ -354,10 +356,11 @@ fn validates_kid_is_owned_by_isser() {
 
 #[test]
 fn it_rejects_duplicate_jti_claims() {
+    let keyserver = Keyserver::start();
     let mut generator = default_generator();
 
     // Enable duplicate `jti` detection:
-    let mut validator = get_validator_builder()
+    let mut validator = get_validator_builder(keyserver.url())
         .validate_jti(true)
         .build();
 
@@ -379,9 +382,10 @@ fn it_rejects_duplicate_jti_claims() {
 
 #[test]
 fn it_fails_with_wrong_public_key() {
+    let keyserver = Keyserver::start();
     // Give the wrong `kid` for the `private_key` used.
     let mut generator = Generator::new(ISS_01.to_string(), KID_02.to_string(), PRIVATE_KEY_01.to_vec());
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();
     match validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]) {
@@ -392,8 +396,9 @@ fn it_fails_with_wrong_public_key() {
 
 #[test]
 fn it_fails_with_no_public_key() {
+    let keyserver = Keyserver::start();
     let mut generator = Generator::new(ISS_01.to_string(), "not-a-kid".to_string(), PRIVATE_KEY_01.to_vec());
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(keyserver.url()).build();
 
     let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();
     match validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]) {
@@ -404,12 +409,13 @@ fn it_fails_with_no_public_key() {
 
 #[test]
 fn it_uses_the_fallback_keyserver() {
+    let keyserver = Keyserver::start();
     let mut generator = default_generator();
 
     // Ensure the first keyserver fails.
-    let keyserver = "http://not-a-real-server:1234/".to_string();
-    let mut validator = Validator::builder(keyserver, ISS_01.to_string())
-        .fallback_keyserver(KS_URL.to_string())
+    let invalid_url = "http://not-a-real-server:1234/".to_string();
+    let mut validator = Validator::builder(invalid_url, ISS_01.to_string())
+        .fallback_keyserver(keyserver.url().to_string())
         .build();
 
     let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();
@@ -419,36 +425,34 @@ fn it_uses_the_fallback_keyserver() {
 
 #[test]
 fn it_fetches_key_from_cache() {
-    // Reset keyserver count to 0.
-    ks_reset();
+    let server = Keyserver::start();
 
     let mut generator = default_generator();
-    let mut validator = get_validator_builder().build();
+    let mut validator = get_validator_builder(server.url()).build();
     let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();
 
     // Requesting the same `kid_01` twice should only result in 1 request.
     let _ = validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]).unwrap();
-    assert_eq!(ks_count(), "1");
+    assert_eq!(server.count(), "1");
     let _ = validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]).unwrap();
-    assert_eq!(ks_count(), "1");
+    assert_eq!(server.count(), "1");
 }
 
 #[test]
 fn it_does_not_fetch_expired_key_from_cache() {
-    // Reset keyserver count to 0.
-    ks_reset();
+    let server = Keyserver::start();
 
     let mut generator = default_generator();
     let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();
 
     // Make all tokens expire immediately.
-    let mut validator = get_validator_builder()
+    let mut validator = get_validator_builder(server.url())
         .cache_duration(Duration::from_nanos(0))
         .build();
 
     // The expired `kid_01` should be requested again = 2 requests.
     let _ = validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]).unwrap();
-    assert_eq!(ks_count(), "1");
+    assert_eq!(server.count(), "1");
     let _ = validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]).unwrap();
-    assert_eq!(ks_count(), "2");
+    assert_eq!(server.count(), "2");
 }
