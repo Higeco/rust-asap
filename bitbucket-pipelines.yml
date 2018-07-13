@@ -2,8 +2,13 @@ image: rust:latest
 
 pipelines:
   default:
-    - step:
-        script:
-          - echo "Build project"; cargo build
-          - echo "Running tests"; cargo test
-          - echo "Running benchmarks"; cargo bench
+    - parallel:
+        - step:
+            name: Build and test
+            script:
+              - cargo build
+              - cargo test
+        - step:
+            name: Run benchmarks
+            script:
+              - cargo bench
