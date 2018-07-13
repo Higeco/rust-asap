@@ -4,34 +4,29 @@
 //! ```rust
 //! # extern crate asap;
 //! # extern crate serde;
-//! # extern crate chrono;
 //! # #[macro_use] extern crate serde_derive;
 //! #
-//! # use asap::validator::{Validator, ValidatorBuilder};
-//! # use serde::de::DeserializeOwned;
-//! # use chrono::Utc;
+//! # use asap::claims::Claims;
+//! # use asap::validator::Validator;
 //! #
-//! # let now = Utc::now().timestamp();
-//! #
-//! # // Your expected jwt claims:
+//! // Any extra claims you'd like to pull out of the token:
 //! # #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//! # struct MyClaims {
-//! #     iat: i64,
-//! #     exp: i64,
-//! #     iss: String,
-//! #     aud: String, // or Vec<String>
-//! #     jti: String,
+//! # struct ExtraClaims {
+//! #     foo: String,
+//! #     bar: i64,
+//! #     baz: Vec<String>
 //! # }
 //! #
 //! # let asap_token = "<your-token-here>";
 //! #
 //! # // Construct the ASAP validator:
-//! # let keyserver = String::from("http://my-keyserver/");
-//! # let resource_server_audience = String::from("my-server");
-//! let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
-//!     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
+//! # let keyserver = "http://my-keyserver/".to_string();
+//! # let resource_server_audience = "my-server".to_string();
+//! let mut validator = Validator::builder(keyserver, resource_server_audience)
+//!     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
 //!     .build();
-//! match validator.decode::<MyClaims>(asap_token, &vec!["authorized", "subjects"]) {
+//!
+//! match validator.decode::<Claims<ExtraClaims>>(asap_token, &vec!["authorized", "subjects"]) {
 //!     Ok(token_data) => println!("claims {:?}", token_data.claims),
 //!     Err(e) => eprintln!("error validation token/invalid token: {:?}", e)
 //! }
@@ -245,36 +240,30 @@ impl ValidatorBuilder {
 /// ```rust
 /// # extern crate asap;
 /// # extern crate serde;
-/// # extern crate chrono;
 /// # #[macro_use] extern crate serde_derive;
 /// #
-/// # use asap::validator::{Validator, ValidatorBuilder};
-/// # use serde::de::DeserializeOwned;
-/// # use chrono::Utc;
-/// #
-/// # let now = Utc::now().timestamp();
+/// # use asap::claims::Claims;
+/// # use asap::validator::Validator;
 /// #
 /// // Construct the ASAP validator:
-/// let keyserver = String::from("http://my-keyserver/");
-/// let resource_server_audience = String::from("my-server");
+/// let keyserver = "http://my-keyserver/".to_string();
+/// let resource_server_audience = "my-server".to_string();
 /// let mut validator = Validator::builder(keyserver, resource_server_audience)
-///     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
+///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
 ///     .build();
 ///
-/// // Your expected jwt claims:
+/// // Any extra claims you'd like to pull out of the token:
 /// #[derive(Debug, Serialize, Deserialize, PartialEq)]
-/// struct MyClaims {
-///     iat: i64,
-///     exp: i64,
-///     iss: String,
-///     aud: String, // or Vec<String>
-///     jti: String,
+/// struct ExtraClaims {
+///     foo: String,
+///     bar: i64,
+///     baz: Vec<String>
 /// }
 ///
 /// let asap_token = "<your-token-here>";
-/// let whitelisted_issuers = vec!["list", "of", "authorized", "subjects"];
+/// let whitelisted_issuers = vec!["list", "of", "whitelisted", "issuers"];
 ///
-/// match validator.decode::<MyClaims>(asap_token, &whitelisted_issuers) {
+/// match validator.decode::<Claims<ExtraClaims>>(asap_token, &whitelisted_issuers) {
 ///     Ok(token_data) => {
 ///         // Here you have a successfully verified and accepted access token!
 ///         //
@@ -456,36 +445,30 @@ impl Validator {
     /// ```rust
     /// # extern crate asap;
     /// # extern crate serde;
-    /// # extern crate chrono;
     /// # #[macro_use] extern crate serde_derive;
     /// #
-    /// # use asap::validator::{Validator, ValidatorBuilder};
-    /// # use serde::de::DeserializeOwned;
-    /// # use chrono::Utc;
+    /// # use asap::claims::Claims;
+    /// # use asap::validator::Validator;
     /// #
-    /// # let now = Utc::now().timestamp();
-    /// #
-    /// # // Construct the ASAP validator:
-    /// # let keyserver = "http://my-keyserver/".to_string();
-    /// # let resource_server_audience = "my-server".to_string();
-    /// # let mut validator = Validator::builder(keyserver, resource_server_audience)
-    /// #     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
-    /// #     .build();
-    /// #
-    /// # // Your expected jwt claims:
-    /// # #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    /// # struct MyClaims {
-    /// #     iat: i64,
-    /// #     exp: i64,
-    /// #     iss: String,
-    /// #     aud: String, // or Vec<String>
-    /// #     jti: String,
-    /// # }
-    /// #
-    /// let asap_token = "<your-token-here>";
-    /// let whitelisted_issuers = vec!["list", "of", "authorized", "subjects"];
+    /// // Construct the ASAP validator:
+    /// let keyserver = "http://my-keyserver/".to_string();
+    /// let resource_server_audience = "my-server".to_string();
+    /// let mut validator = Validator::builder(keyserver, resource_server_audience)
+    ///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
+    ///     .build();
     ///
-    /// match validator.decode::<MyClaims>(asap_token, &whitelisted_issuers) {
+    /// // Any extra claims you'd like to pull out of the token:
+    /// #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    /// struct ExtraClaims {
+    ///     foo: String,
+    ///     bar: i64,
+    ///     baz: Vec<String>
+    /// }
+    ///
+    /// let asap_token = "<your-token-here>";
+    /// let whitelisted_issuers = vec!["list", "of", "whitelisted", "issuers"];
+    ///
+    /// match validator.decode::<Claims<ExtraClaims>>(asap_token, &whitelisted_issuers) {
     ///     Ok(token_data) => {
     ///         // Token is a valid ASAP token and is authorised.
     ///         println!("claims {:?}", token_data.claims);

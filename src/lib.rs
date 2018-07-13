@@ -26,14 +26,11 @@
 //! ```rust
 //! # extern crate asap;
 //! # extern crate serde;
-//! # extern crate chrono;
 //! # #[macro_use] extern crate serde_derive;
 //! #
-//! # use asap::claims::{DefaultClaims, Aud};
-//! # use asap::generator::Generator;
-//! # use serde::de::DeserializeOwned;
-//! # use chrono::Utc;
-//! #
+//! use asap::claims::{DefaultClaims, Aud};
+//! use asap::generator::Generator;
+//!
 //! // The identifier of the service that issues the token (`iss`).
 //! let iss = "service01".to_string();
 //! // The key id (`kid`) of the public key in your keyserver.
@@ -55,36 +52,27 @@
 //! ```rust
 //! # extern crate asap;
 //! # extern crate serde;
-//! # extern crate chrono;
 //! # #[macro_use] extern crate serde_derive;
 //! #
-//! # use asap::validator::{Validator, ValidatorBuilder};
 //! # use serde::de::DeserializeOwned;
-//! # use chrono::Utc;
-//! #
-//! # let now = Utc::now().timestamp();
-//! #
-//! // Construct the ASAP validator:
-//! let keyserver = String::from("http://my-keyserver/");
-//! let resource_server_audience = String::from("my-server");
+//! use asap::claims::{Claims, DefaultClaims};
+//! use asap::validator::Validator;
+//!
+//! let asap_token = "<your-asap-token>";
+//!
+//! // The keyserver which hosts your public keys.
+//! let keyserver = "http://my-keyserver/".to_string();
+//! // The audience of the server/resource that validates the incoming tokens.
+//! let resource_server_audience = "my-server".to_string();
+//!
+//! // Build the ASAP validator:
 //! let mut validator = Validator::builder(keyserver, resource_server_audience)
-//!     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
+//!     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
 //!     .build();
 //!
-//! // Your expected jwt claims:
-//! #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//! struct MyClaims {
-//!     iat: i64,
-//!     exp: i64,
-//!     iss: String,
-//!     aud: String, // or Vec<String>
-//!     jti: String,
-//! }
-//!
-//! let asap_token = "<your-token-here>";
-//! let whitelisted_issuers = vec!["list", "of", "authorized", "subjects"];
-//!
-//! match validator.decode::<MyClaims>(asap_token, &whitelisted_issuers) {
+//! // A list of issuers that are allowed to access this server/resource.
+//! let whitelisted_issuers = vec!["list", "of", "whitelisted", "issuers"];
+//! match validator.decode::<DefaultClaims>(asap_token, &whitelisted_issuers) {
 //!     Ok(token_data) => {
 //!         // Here you have a successfully verified and accepted access token!
 //!         //
