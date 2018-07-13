@@ -7,80 +7,76 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
+use asap::claims::{DefaultClaims, Aud};
 use asap::generator::Generator;
 use asap::validator::Validator;
 use bencher::Bencher;
-use chrono::Utc;
-
 
 // A private key to use to sign the tokens.
 const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/service01/1530402390-private.der");
 // The path of the public key in the keyserver.
 const KID_01: &'static str = "service01/1530402390-public.der";
+// The issuer of the token.
+const ISS_01: &'static str = "service01";
 // The URL of our test keyserver.
 const KS_URL: &'static str = "http://localhost:8000/";
-// A default resource server audience.
-const SERVER_AUDIENCE: &'static str = "resource_server_audience";
-
-// A simple `Claims` struct. At the least this must include the `iss`, `exp`,
-// `iat`, `aud` and `jti` fields, but you can add extra claims to it as well.
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct Claims {
-    iss: String,
-    exp: i64,
-    iat: i64,
-    aud: String,
-    jti: String
-}
-
-impl Default for Claims {
-    fn default() -> Claims {
-        let now = Utc::now().timestamp();
-        Claims {
-            iss: String::from("service01"),
-            exp: now + 3000,
-            iat: now,
-            aud: String::from("resource_server_audience"),
-            jti: String::from("foobar")
-        }
-    }
-}
 
 fn default_generator() -> Generator {
-    Generator::new(KID_01.to_string(), PRIVATE_KEY_01.to_vec())
+    Generator::new(ISS_01.to_string(), KID_01.to_string(), PRIVATE_KEY_01.to_vec())
 }
 
+fn default_aud() -> Aud {
+    Aud::One(ISS_01.to_string())
+}
 
 fn speed_of_generating_tokens(b: &mut Bencher) {
-    let claims = Claims::default();
-    let generator = default_generator();
-    b.iter(|| generator.token(&claims).unwrap());
+    let mut generator = default_generator();
+    b.iter(|| generator.token::<DefaultClaims>(default_aud(), None).unwrap());
 }
 
-fn speed_of_generating_tokens_with_validation(b: &mut Bencher) {
-    let claims = Claims::default();
+fn speed_of_generating_tokens_with_extra_claims(b: &mut Bencher) {
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+    struct ExtraClaims {
+        foo: String,
+        bar: i64,
+        baz: Vec<String>
+    }
+    let extra_claims: Option<ExtraClaims> = Some(ExtraClaims {
+            foo: "foo".to_string(),
+            bar: 1234,
+            baz: vec!["baz".to_string(), "bop".to_string()]
+        });
+
     let mut generator = default_generator();
-    generator.validate_claims = true;
-    b.iter(|| generator.token(&claims).unwrap());
+    b.iter(|| generator.token(default_aud(), extra_claims.clone()).unwrap());
 }
 
 fn speed_of_validating_tokens(b: &mut Bencher) {
-    let claims = Claims::default();
-    let generator = default_generator();
-    let token = generator.token(&claims).unwrap();
+    let mut generator = default_generator();
+    let extra_claims: Option<DefaultClaims> = None;
+    let token = generator.token(default_aud(), extra_claims).unwrap();
 
-    let mut validator = Validator::builder(KS_URL.to_string(), SERVER_AUDIENCE.to_string())
+    let mut validator = Validator::builder(KS_URL.to_string(), ISS_01.to_string())
         .build();
 
     // Validate once to cache the public key:
-    validator.decode::<Claims>(&token, &vec!["service01"]).unwrap();
-    b.iter(|| validator.decode::<Claims>(&token, &vec!["service01"]).unwrap());
+    validator.decode::<DefaultClaims>(&token, &vec![ISS_01]).unwrap();
+    b.iter(|| validator.decode::<DefaultClaims>(&token, &vec![ISS_01]).unwrap());
 }
 
 fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
-    let claims = Claims::default();
-    let generator = default_generator();
-    let token = generator.token(&claims).unwrap();
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct Claims {
+        iss: String,
+        exp: i64,
+        iat: i64,
+        aud: String,
+        jti: String,
+    }
+
+    let mut generator = default_generator();
+    let extra_claims: Option<DefaultClaims> = None;
+    let token = generator.token(default_aud(), extra_claims).unwrap();
 
     let jwt_validator = jwt::Validation {
         leeway: 0,
@@ -98,15 +94,22 @@ fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
 }
 
 fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
-    let claims = Claims::default();
-    let generator = default_generator();
-    let token = generator.token(&claims).unwrap();
+    let mut generator = default_generator();
+    let extra_claims: Option<DefaultClaims> = None;
+    let token = generator.token(default_aud(), extra_claims).unwrap();
 
-    let mut validator = Validator::builder(KS_URL.to_string(), SERVER_AUDIENCE.to_string())
+    let mut validator = Validator::builder(KS_URL.to_string(), ISS_01.to_string())
         .build();
-    b.iter(|| validator.dangerous_unsafe_decode::<Claims>(&token).unwrap());
+    b.iter(|| validator.dangerous_unsafe_decode::<DefaultClaims>(&token).unwrap());
 }
 
-benchmark_group!(generate, speed_of_generating_tokens, speed_of_generating_tokens_with_validation);
-benchmark_group!(validate, speed_of_validating_tokens, speed_of_validating_tokens_without_asap, speed_of_dangerous_unsafe_decode);
+benchmark_group!(generate,
+    speed_of_generating_tokens,
+    speed_of_generating_tokens_with_extra_claims
+);
+benchmark_group!(validate,
+    speed_of_validating_tokens,
+    speed_of_validating_tokens_without_asap,
+    speed_of_dangerous_unsafe_decode
+);
 benchmark_main!(generate, validate);

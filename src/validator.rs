@@ -44,7 +44,7 @@ use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use serde_json::value::Value;
 use serde_json::{from_str, to_string, Map};
-use std::cmp::{max, min};
+use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io::Read;
@@ -54,8 +54,15 @@ use errors::{Result, ResultExt, ValidatorError};
 use util::{extract_aud_from_claims, extract_claim};
 
 /// The duration of how long the validator should cache public keys fetched
-/// from the keyserver. Defaults to 10 minutes.
+/// from the keyserver.
+///
+/// Defaults to 10 minutes.
 pub const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(600);
+
+/// The max lifespan of a token before it's considered expired.
+///
+/// Defaults to one hour (as per ASAP spec).
+pub const DEFAULT_MAX_LIFESPAN: i64 = 60 * 60;
 
 /// Options used to configure an ASAP Validator.
 pub struct ValidatorBuilder {
@@ -145,10 +152,12 @@ impl ValidatorBuilder {
     }
 
     /// Sets the `max_lifespan` for the `Validator`.
-    /// Valid values are from `0` to `3600` inclusive. Any other value outside
-    /// this range will be clamped.
     ///
-    /// Defaults to `3600`.
+    /// Note that while the ASAP spec defines a hard upper limit of `3600`
+    /// seconds, some uses may require a higher limit (eg: when validating
+    /// session tokens). You may use this to set a higher limit.
+    ///
+    /// Defaults to `3600` seconds.
     pub fn max_lifespan(&mut self, max_lifespan: i64) -> &mut ValidatorBuilder {
         self.max_lifespan = Some(max_lifespan);
         self
@@ -196,7 +205,7 @@ impl ValidatorBuilder {
 
         Validator {
             leeway: self.leeway.unwrap_or(0),
-            max_lifespan: max(0, min(3600, self.max_lifespan.unwrap_or(3600))),
+            max_lifespan: max(0, self.max_lifespan.unwrap_or(DEFAULT_MAX_LIFESPAN)),
             jwt_validator,
 
             keyserver_url: self.keyserver_url.take().unwrap(),
@@ -263,9 +272,9 @@ impl ValidatorBuilder {
 /// }
 ///
 /// let asap_token = "<your-token-here>";
-/// let authorized_subjects = vec!["list", "of", "authorized", "subjects"];
+/// let whitelisted_issuers = vec!["list", "of", "authorized", "subjects"];
 ///
-/// match validator.decode::<MyClaims>(asap_token, &authorized_subjects) {
+/// match validator.decode::<MyClaims>(asap_token, &whitelisted_issuers) {
 ///     Ok(token_data) => {
 ///         // Here you have a successfully verified and accepted access token!
 ///         //
@@ -442,7 +451,7 @@ impl Validator {
     /// - a valid and well-formed `kid` in the jwt header
     /// - the token's lifespan (`nbf`, `iat` and `exp` checks)
     /// - the `aud` matching/containing `resource_server_audience`
-    /// - the issuer/subject having authorisation (via `authorized_subjects`)
+    /// - the issuer/subject having authorisation (via `whitelisted_issuers`)
     ///
     /// ```rust
     /// # extern crate asap;
@@ -457,10 +466,10 @@ impl Validator {
     /// # let now = Utc::now().timestamp();
     /// #
     /// # // Construct the ASAP validator:
-    /// # let keyserver = String::from("http://my-keyserver/");
-    /// # let resource_server_audience = String::from("my-server");
+    /// # let keyserver = "http://my-keyserver/".to_string();
+    /// # let resource_server_audience = "my-server".to_string();
     /// # let mut validator = Validator::builder(keyserver, resource_server_audience)
-    /// #     .fallback_keyserver(String::from("http://my-fallback-keyserver/"))
+    /// #     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
     /// #     .build();
     /// #
     /// # // Your expected jwt claims:
@@ -474,9 +483,9 @@ impl Validator {
     /// # }
     /// #
     /// let asap_token = "<your-token-here>";
-    /// let authorized_subjects = vec!["list", "of", "authorized", "subjects"];
+    /// let whitelisted_issuers = vec!["list", "of", "authorized", "subjects"];
     ///
-    /// match validator.decode::<MyClaims>(asap_token, &authorized_subjects) {
+    /// match validator.decode::<MyClaims>(asap_token, &whitelisted_issuers) {
     ///     Ok(token_data) => {
     ///         // Token is a valid ASAP token and is authorised.
     ///         println!("claims {:?}", token_data.claims);
@@ -489,7 +498,7 @@ impl Validator {
     ///     Err(e) => eprintln!("{:?}", e)
     /// }
     /// ```
-    pub fn decode<T>(&mut self, token: &str, authorized_subjects: &[&str]) -> Result<TokenData<T>>
+    pub fn decode<T>(&mut self, token: &str, whitelisted_issuers: &[&str]) -> Result<TokenData<T>>
     where
         T: DeserializeOwned + Serialize,
     {
@@ -519,7 +528,7 @@ impl Validator {
         self.validate(
             &kid,
             &from_str(&to_string(&data.claims)?)?,
-            authorized_subjects,
+            whitelisted_issuers,
         )?;
 
         // If everything looks good, and the key is not yet cached, then store
@@ -553,7 +562,7 @@ impl Validator {
         &mut self,
         kid: &str,
         claims: &Map<String, Value>,
-        authorized_subjects: &[&str],
+        whitelisted_issuers: &[&str],
     ) -> Result<()> {
         let now = Utc::now().timestamp();
         let iss = extract_claim::<String>(claims, "iss")?;
@@ -623,11 +632,11 @@ impl Validator {
         let sub = extract_claim::<String>(claims, "sub").unwrap_or(iss);
 
         // Here, we verify that the token's subject is contained in the
-        // `authorized_subjects` vec. This check isn't explicitly defined in the
+        // `whitelisted_issuers` vec. This check isn't explicitly defined in the
         // spec, but the spec suggests that a resource server should decide if
         // the issuer of the token is authorised to make requests (by checking
         // checking either the `iss` or the `sub` claim). Thus, we provide
-        // `authorized_subjects` as an argument to `Validator.decode` so the
+        // `whitelisted_issuers` as an argument to `Validator.decode` so the
         // user of this library may pass a vec of strings to further verify that
         // the token is valid.
         //
@@ -644,8 +653,8 @@ impl Validator {
         // - The resource server MAY decide if the combination of verified
         //      issuer and effective subject is authorised to make the requested
         //      business operation.
-        if !authorized_subjects.contains(&sub.as_ref()) {
-            let subjects = authorized_subjects.iter().map(|&x| x.to_owned()).collect();
+        if !whitelisted_issuers.contains(&sub.as_ref()) {
+            let subjects = whitelisted_issuers.iter().map(|&x| x.to_owned()).collect();
             return Err(ValidatorError::UnauthorizedSubject(sub, subjects).into());
         }
 

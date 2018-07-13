@@ -8,53 +8,81 @@
 //! # extern crate chrono;
 //! # #[macro_use] extern crate serde_derive;
 //! #
+//! # use asap::claims::{DefaultClaims, Aud};
 //! # use asap::generator::Generator;
 //! # use serde::de::DeserializeOwned;
 //! # use chrono::Utc;
 //! #
-//! # // Your jwt claims that will be encoded in the token, this example contains
-//! # // the minimum required claims that the ASAP spec requires:
-//! # #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//! # struct MyClaims {
-//! #     iss: String,
-//! #     jti: String,
-//! #     iat: i64,
-//! #     exp: i64,
-//! #     aud: String, // or `Vec<String>`
-//! # }
+//! // The identifier of the service that issues the token (`iss`).
+//! let iss = "service01".to_string();
+//! // The key id (`kid`) of the public key in your keyserver.
+//! let kid = "service01/my-key-id".to_string();
+//! // The `private_key` used to sign each token.
+//! let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
+//!
+//! let mut generator = Generator::new(iss, kid, private_key);
+//!
+//! // You can then use the generator to create ASAP tokens:
+//!
+//! // The intended audience of your token:
+//! let aud = Aud::One("target-service".to_string());
+//! // You can add custom extra claims too if you need:
+//! let extra_claims: Option<DefaultClaims> = None;
+//!
+//! // Authorization tokens: "eyJ0eXAiOiJKV..."
+//! generator.token::<DefaultClaims>(aud, extra_claims).unwrap();
+//! // Or authorization headers: "Bearer eyJ0eXAiOiJKV..."
+//! // generator.auth_header(aud, extra_claims).unwrap();
+//! ```
+//!
+//! You may also provide extra claims to your generated token, as long as your
+//! struct can be serialised and deserialised:
+//!
+//! ```rust
+//! # extern crate asap;
+//! # extern crate serde;
+//! # extern crate chrono;
+//! # #[macro_use] extern crate serde_derive;
 //! #
-//! # let now = Utc::now().timestamp();
-//! # let claims = MyClaims {
-//! #     iss: String::from("service01"),
-//! #     exp: now + 3000,
-//! #     iat: now,
-//! #     aud: String::from("resource_server_audience"),
-//! #     jti: String::from("foobar")
-//! # };
+//! # use asap::claims::{DefaultClaims, Aud};
+//! # use asap::generator::Generator;
+//! # use serde::de::DeserializeOwned;
+//! # use chrono::Utc;
 //! #
-//! # // The `kid` of the public key in your keyserver.
-//! # let kid = String::from("service01/my-key-id");
+//! # // The identifier of the service that issues the token (`iss`).
+//! # let iss = "service01".to_string();
+//! # // The key id (`kid`) of the public key in your keyserver.
+//! # let kid = "service01/my-key-id".to_string();
 //! # // The `private_key` used to sign each token.
 //! # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
 //! #
-//! let generator = Generator::new(kid, private_key);
+//! # let mut generator = Generator::new(iss, kid, private_key);
+//! # let aud = Aud::One("target-service".to_string());
+//! #
+//! #[derive(Serialize, Deserialize)]
+//! struct ExtraClaims {
+//!     foo: String,
+//!     bar: i64,
+//!     baz: Vec<String>
+//! }
 //!
-//! // Authorization tokens: "eyJ0eXAiOiJKV..."
-//! generator.token(&claims).unwrap();
-//! // Authorization headers: "Bearer eyJ0eXAiOiJKV..."
-//! generator.auth_header(&claims).unwrap();
-//! // Optionally check `Claims` struct for ASAP compliance:
-//! generator.validate_claims(&claims).unwrap();
+//! let extra_claims = Some(ExtraClaims {
+//!     foo: "foo".to_string(),
+//!     bar: 1234,
+//!     baz: vec!["baz".to_string()]
+//! });
+//!
+//! generator.token(aud, extra_claims).unwrap();
 //! ```
 
 use jwt;
+use claims::{Aud, ClaimsBuilder};
 use serde::ser::Serialize;
-use serde_json::map::Map;
-use serde_json::{from_str, to_string};
 use std::env;
 
-use errors::{Result, ResultExt, ValidatorError};
-use util::{extract_aud_from_claims, extract_claim, convert_pem_to_der};
+use errors::{Result, ResultExt};
+use util::{convert_pem_to_der};
+
 
 /// An ASAP generator.
 ///
@@ -71,57 +99,24 @@ use util::{extract_aud_from_claims, extract_claim, convert_pem_to_der};
 /// # extern crate chrono;
 /// # #[macro_use] extern crate serde_derive;
 /// #
+/// # use asap::claims::{DefaultClaims, Aud};
 /// # use asap::generator::Generator;
 /// # use serde::de::DeserializeOwned;
 /// # use chrono::Utc;
 /// #
-/// // Your jwt claims that will be encoded in the token, this example contains
-/// // the minimum required claims that the ASAP spec requires:
-/// #[derive(Debug, Serialize, Deserialize, PartialEq)]
-/// struct MyClaims {
-///     iss: String,
-///     jti: String,
-///     iat: i64,
-///     exp: i64,
-///     aud: String, // or `Vec<String>`
-/// }
-///
-/// let now = Utc::now().timestamp();
-/// let claims = MyClaims {
-///     iss: String::from("service01"),
-///     exp: now + 3000,
-///     iat: now,
-///     aud: String::from("resource_server_audience"),
-///     jti: String::from("foobar")
-/// };
-///
-/// // The `kid` of the public key in your keyserver.
-/// let kid = String::from("my-iss/my-key-id");
+/// // The identifier of the service that issues the token (`iss`).
+/// let iss = "service01".to_string();
+/// // The key id (`kid`) of the public key in your keyserver.
+/// let kid = "service01/my-key-id".to_string();
 /// // The `private_key` used to sign each token.
-/// let private_key = include_bytes!("../support/keys/service01/1530402390-private.der");
+/// let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
 ///
-/// let generator = Generator::new(kid, private_key.to_vec());
-/// match generator.token(&claims) {
-///     Ok(token) => println!("{:?}", token),
-///     Err(e) => eprintln!("Error generating token: {}", e)
-/// }
+/// let mut generator = Generator::new(iss, kid, private_key);
 /// ```
 pub struct Generator {
-    /// Whether or not the generator should validate your given `Claims` struct
-    /// before generating a token. Note that if your `Claims` struct does not
-    /// have the claims required by the ASAP specification it will likely be
-    /// rejected.
-    ///
-    /// If you set this to `true`, then generating a token with a
-    /// `Claims` struct that does not **appear** to be compliant will fail (this
-    /// does not perform a full validation as that should be done by the `Validator`
-    /// instead).
-    ///
-    /// Defaults to `false`.
-    pub validate_claims: bool,
-
     header: jwt::Header,
     private_key: Vec<u8>,
+    claims_builder: ClaimsBuilder,
 }
 
 impl Generator {
@@ -155,15 +150,44 @@ impl Generator {
     /// # Create a public key in `.der` format:
     /// openssl rsa -in private_key.der -inform DER -RSAPublicKey_out -outform DER -out public_key.der
     /// ```
-    pub fn new(kid: String, private_key: Vec<u8>) -> Generator {
+    pub fn new(iss: String, kid: String, private_key: Vec<u8>) -> Generator {
         let mut header = jwt::Header::new(jwt::Algorithm::RS256);
         header.kid = Some(kid);
 
+        let claims_builder = ClaimsBuilder::new(iss);
         Generator {
             header,
             private_key,
-            validate_claims: false,
+            claims_builder,
         }
+    }
+
+    /// Sets the max lifespan (in seconds) of the tokens created by this generator.
+    ///
+    /// ```rust
+    /// # extern crate asap;
+    /// # extern crate serde;
+    /// # extern crate chrono;
+    /// # #[macro_use] extern crate serde_derive;
+    /// #
+    /// # use asap::claims::{DefaultClaims, Aud};
+    /// # use asap::generator::Generator;
+    /// # use serde::de::DeserializeOwned;
+    /// # use chrono::Utc;
+    /// #
+    /// // The identifier of the service that issues the token (`iss`).
+    /// let iss = "service01".to_string();
+    /// // The key id (`kid`) of the public key in your keyserver.
+    /// let kid = "service01/my-key-id".to_string();
+    /// // The `private_key` used to sign each token.
+    /// let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
+    ///
+    /// // Make generated tokens expire after 60 seconds.
+    /// let mut generator = Generator::new(iss, kid, private_key);
+    /// generator.set_max_lifespan(60);
+    /// ```
+    pub fn set_max_lifespan(&mut self, lifespan: i64) {
+        self.claims_builder.lifespan(lifespan);
     }
 
     /// Instantiates a generator from the environment. Requires that the
@@ -180,6 +204,7 @@ impl Generator {
     /// use std::env;
     /// use asap::generator::Generator;
     ///
+    /// env::set_var("ASAP_ISSUER", "my-iss");
     /// env::set_var("ASAP_KEY_ID", "my-iss/my-key-id");
     /// env::set_var("ASAP_PRIVATE_KEY", include_str!("../support/keys/service01/1530402390-private.pem"));
     ///
@@ -193,59 +218,66 @@ impl Generator {
         // Retrieve the private key from env (in `pem` format).
         let pem_key = get_env_var("ASAP_PRIVATE_KEY")?;
         let der_key = convert_pem_to_der(pem_key.as_bytes())?;
+        let iss = get_env_var("ASAP_ISSUER")?;
+        let kid = get_env_var("ASAP_KEY_ID")?;
 
-        Ok(Generator::new(get_env_var("ASAP_KEY_ID")?, der_key))
+        Ok(Generator::new(iss, kid, der_key))
     }
 
     /// Generates an ASAP token with the given claims.
     ///
+    /// Providing `extra_claims = None` will generate a standard ASAP token.
+    ///
+    /// You may optionally define your own struct (as long as it implements
+    /// `Serialize` and `Deserialize`) which you can use to add extra claims to
+    /// your token:
+    ///
     /// ```rust
     /// # extern crate asap;
     /// # extern crate serde;
-    /// # #[macro_use] extern crate serde_derive;
     /// # extern crate chrono;
+    /// # #[macro_use] extern crate serde_derive;
     /// #
+    /// # use asap::claims::{DefaultClaims, Aud};
     /// # use asap::generator::Generator;
     /// # use serde::de::DeserializeOwned;
     /// # use chrono::Utc;
     /// #
-    /// # // Your jwt claims that will be encoded in the token, this example contains
-    /// # // the minimum required claims that the ASAP spec requires:
-    /// # #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    /// # struct MyClaims {
-    /// #     iss: String,
-    /// #     jti: String,
-    /// #     iat: i64,
-    /// #     exp: i64,
-    /// #     aud: String, // or `Vec<String>`
-    /// # }
-    /// #
-    /// # let now = Utc::now().timestamp();
-    /// # let claims = MyClaims {
-    /// #     iss: String::from("service01"),
-    /// #     exp: now + 3000,
-    /// #     iat: now,
-    /// #     aud: String::from("resource_server_audience"),
-    /// #     jti: String::from("foobar")
-    /// # };
-    /// #
-    /// # // The `kid` of the public key in your keyserver.
-    /// # let kid = String::from("my-iss/my-key-id");
+    /// # // The identifier of the service that issues the token (`iss`).
+    /// # let iss = "service01".to_string();
+    /// # // The key id (`kid`) of the public key in your keyserver.
+    /// # let kid = "service01/my-key-id".to_string();
     /// # // The `private_key` used to sign each token.
-    /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der");
+    /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
     /// #
-    /// let generator = Generator::new(kid, private_key.to_vec());
-    /// let token = generator.token(&claims).unwrap();
-    /// println!("{:?}", token); // eyJ0eXAiOiJKV...
+    /// # let mut generator = Generator::new(iss, kid, private_key);
+    /// #
+    /// // Your target audience (the `aud` claim):
+    /// let aud = Aud::One("target-audience".to_string());
+    /// // Alternatively, you may define multiple audiences:
+    /// let aud = Aud::Many(vec!["service01".to_string(), "service02".to_string()]);
+    ///
+    /// // You may also optionally define extra claims to be added to your token:
+    /// #[derive(Serialize, Deserialize)]
+    /// struct ExtraClaims {
+    ///     foo: String,
+    ///     bar: i64,
+    ///     baz: Vec<String>
+    /// }
+    ///
+    /// let extra_claims = ExtraClaims {
+    ///     foo: "foo".to_string(),
+    ///     bar: 1234,
+    ///     baz: vec!["baz".to_string()]
+    /// };
+    ///
+    /// generator.token(aud, Some(extra_claims)).unwrap();
     /// ```
-    pub fn token<T: Serialize>(&self, claims: &T) -> Result<String> {
-        // If set, perform a quick validation of the claims struct.
-        if self.validate_claims {
-            self.validate_claims(claims)?;
-        }
+    pub fn token<T: Serialize>(&mut self, aud: Aud, extra_claims: Option<T>) -> Result<String> {
+        let claims = self.claims_builder.build(aud, extra_claims);
 
         // Encode it and sign it with the private key.
-        let token = jwt::encode(&self.header, claims, &self.private_key).sync()?;
+        let token = jwt::encode(&self.header, &claims, &self.private_key).sync()?;
         Ok(token)
     }
 
@@ -254,153 +286,28 @@ impl Generator {
     /// ```rust
     /// # extern crate asap;
     /// # extern crate serde;
-    /// # #[macro_use] extern crate serde_derive;
     /// # extern crate chrono;
+    /// # #[macro_use] extern crate serde_derive;
     /// #
+    /// # use asap::claims::{DefaultClaims, Aud};
     /// # use asap::generator::Generator;
     /// # use serde::de::DeserializeOwned;
     /// # use chrono::Utc;
     /// #
-    /// # // Your jwt claims that will be encoded in the token, this example contains
-    /// # // the minimum required claims that the ASAP spec requires:
-    /// # #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    /// # struct MyClaims {
-    /// #     iss: String,
-    /// #     jti: String,
-    /// #     iat: i64,
-    /// #     exp: i64,
-    /// #     aud: String, // or `Vec<String>`
-    /// # }
-    /// #
-    /// # let now = Utc::now().timestamp();
-    /// # let claims = MyClaims {
-    /// #     iss: String::from("service01"),
-    /// #     exp: now + 3000,
-    /// #     iat: now,
-    /// #     aud: String::from("resource_server_audience"),
-    /// #     jti: String::from("foobar")
-    /// # };
-    /// #
-    /// # // The `kid` of the public key in your keyserver.
-    /// # let kid = String::from("my-iss/my-key-id");
+    /// # // The identifier of the service that issues the token (`iss`).
+    /// # let iss = "service01".to_string();
+    /// # // The key id (`kid`) of the public key in your keyserver.
+    /// # let kid = "service01/my-key-id".to_string();
     /// # // The `private_key` used to sign each token.
     /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
     /// #
-    /// let generator = Generator::new(kid, private_key);
-    /// let auth_header = generator.auth_header(&claims).unwrap();
+    /// # let mut generator = Generator::new(iss, kid, private_key);
+    /// # let aud = Aud::One("target-audience".to_string());
+    /// # let extra_claims: Option<DefaultClaims> = None;
+    /// let auth_header = generator.auth_header(aud, extra_claims).unwrap();
     /// println!("{:?}", auth_header); // "Bearer eyJ0eXAiOiJKV..."
     /// ```
-    pub fn auth_header<T: Serialize>(&self, claims: &T) -> Result<String> {
-        let token = self.token(claims)?;
-        Ok(format!("Bearer {}", token))
-    }
-
-    /// This is a helper method you can use to ensure your `Claims` struct is
-    /// valid according [to the ASAP specification](https://s2sauth.bitbucket.io/spec/).
-    ///
-    /// If you set `generator.validate_claims = true` then each time you generate
-    /// a token the generator will check the claims with this method.
-    ///
-    /// This method ensures that:
-    ///
-    /// - The `kid` is in the correct format (that is, it begins with `"issuer/"`).
-    /// - The difference between `exp` and `iat` does not exceed one hour.
-    /// - Each of the mandatory claims are present:
-    ///     - `iss`: `String`. This identifier of the service that issued the token.
-    ///     - `iat`: `i64`. The issued at time.
-    ///     - `exp`: `i64`. Token expiry timestamp. If the environment can guarantee a
-    ///         good synchronisation between the internal clocks of the systems
-    ///         involved in the communication, a sub-minute expire time is
-    ///         recommended.
-    ///     - `aud`: `String` or `Vec<String>`. The audience.
-    ///     - `jti`: `String`. Token identifier. a generated nonce value that is unique
-    ///         within the temporal window of the token life time. The client
-    ///         MUST ensure that there is a very low probability that at any point
-    ///         in time there are more than one valid and non-expired tokens with
-    ///         the same `jti` value, considering that there may be many issuers
-    ///         and many instances of the same issuer.
-    ///
-    /// This method **DOES NOT** perform any other checks or validations. Use
-    /// this method only to test if your `Claims` struct is compliant with the
-    /// spec, but use the `asap::validator::Validator` struct to verify that the
-    /// resource server should accept and honour the generated token.
-    ///
-    /// ```rust
-    /// # extern crate asap;
-    /// # extern crate serde;
-    /// # #[macro_use] extern crate serde_derive;
-    /// # extern crate chrono;
-    /// #
-    /// # use chrono::Utc;
-    /// # use asap::generator::Generator;
-    /// #
-    /// # let kid = String::from("my-iss/my-key-id");
-    /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
-    /// #
-    /// # let generator = Generator::new(kid, private_key);
-    /// #
-    /// #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    /// struct MyCustomClaims {
-    ///     jti: String,
-    ///     aud: Vec<String>,
-    ///     iat: i64,
-    ///     exp: i64,
-    ///     extra_custom_claim: String,
-    ///     // Oh no - where's the `iss` claim?
-    /// }
-    ///
-    /// // Here we're using `chrono`'s `Utc` module to get the current time as an
-    /// // `i64`, but as long as you provide an `i64` you can use whatever you want.
-    /// let now = Utc::now().timestamp();
-    ///
-    /// let my_claims = MyCustomClaims {
-    ///     jti: String::from("my-jti-nonce"),
-    ///     aud: vec![String::from("resource-server"), String::from("another-resource-server")],
-    ///     iat: now,
-    ///     exp: now + 60,
-    ///     extra_custom_claim: String::from("my-custom-claim")
-    /// };
-    ///
-    /// // This will error because the `iss` claim doesn't exist:
-    /// match generator.validate_claims(&my_claims) {
-    ///     Ok(_) => println!("Your claims struct is valid according to the spec!"),
-    ///     Err(e) => eprintln!("Your claims struct is invalid, reason: {:?}", e)
-    /// }
-    /// ```
-    pub fn validate_claims<T: Serialize>(&self, claims: &T) -> Result<()> {
-        // Easiest way to get the values from a generic struct is to serialise
-        // it and then deserialise it into a map.
-        let claims_map: Map<_, _> = from_str(&to_string(claims)?)?;
-
-        // Check that mandatory claims exist.
-        let iss = extract_claim::<String>(&claims_map, "iss")?;
-        let exp = extract_claim::<i64>(&claims_map, "exp")?;
-        let iat = extract_claim::<i64>(&claims_map, "iat")?;
-        // We don't perform validation on these claims (that's the job of the
-        // resource server/Validator) but we do check that they exist.
-        let _jti = extract_claim::<String>(&claims_map, "jti")?;
-        let _aud = extract_aud_from_claims(&claims_map)?;
-
-        // From ASAP spec:
-        // The resource server MUST check that the key identified by `kid` is
-        // owned by the issuer. In order to do so, the resource server MAY check
-        // if the `kid` string starts with `$iss/` (where $iss is the value of
-        // the `iss` claim) and, in affirmative case, accept that as proof of
-        // ownership of the key by the issuer.
-        let kid = self.header.kid.as_ref().unwrap();
-        if !kid.starts_with(&format!("{}/", &iss)) {
-            return Err(ValidatorError::InvalidKID(kid.to_string(), iss.to_string()).into());
-        }
-
-        // From ASAP spec:
-        // The resource server MUST reject a token if it lifespan (the difference
-        // between `exp` and `iat`) exceeds one hour (hard limit). A resource
-        // server MAY implement, at its discretion, a more restrictive upper
-        // bound for the lifespan of a token.
-        if exp - iat > 3600 {
-            return Err(ValidatorError::InvalidLifespan.into());
-        }
-
-        Ok(())
+    pub fn auth_header<T: Serialize>(&mut self, aud: Aud, extra_claims: Option<T>) -> Result<String> {
+        Ok(format!("Bearer {}", self.token(aud, extra_claims)?))
     }
 }

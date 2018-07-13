@@ -1,12 +1,15 @@
 use pem;
+use rand::{self, Rng};
+use rand::distributions::Alphanumeric;
 use serde::de::DeserializeOwned;
 use serde_json::map::Map;
 use serde_json::{from_value, Value};
 
 use errors::{Result, ValidatorError};
 
-// Helper fn to extract the `aud` claim (which may be a string or array of
-// strings) from a claims map.
+// Extract the `aud` claim (which may be a string or array of strings) from a
+// claims map.
+//
 // Always returns the `aud` claims as a `Vec<String>`.
 pub fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String>> {
     if let Some(value) = claims.get("aud") {
@@ -20,7 +23,6 @@ pub fn extract_aud_from_claims(claims: &Map<String, Value>) -> Result<Vec<String
     }
 }
 
-// Helper fn to extract the given claim from a claims map.
 pub fn extract_claim<T>(claims: &Map<String, Value>, key: &str) -> Result<T>
 where
     T: DeserializeOwned,
@@ -36,6 +38,13 @@ pub fn convert_pem_to_der(input: &[u8]) -> Result<Vec<u8>> {
     let key = pem::parse(input)
         .map_err(|err| format_err!("failed to parse pem data: {}", err))?;
     Ok(key.contents)
+}
+
+pub fn generate_jti() -> String {
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(20)
+        .collect::<String>()
 }
 
 #[test]
