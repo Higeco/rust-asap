@@ -68,7 +68,7 @@ pub fn server(addr: &SocketAddr) -> (SocketAddr, impl Future<Item = (), Error = 
 // Where the keys are stored.
 const KEYS_PATH: &'static str = "support/keys/";
 
-fn service(request: Request<Body>, counter: &Arc<AtomicUsize>) -> Response<Body> {
+fn service(request: Request<Body>, counter: &AtomicUsize) -> Response<Body> {
     match (request.method(), request.uri().path()) {
         (&Method::GET, "/count") => {
             Response::new(Body::from(counter.load(Ordering::Relaxed).to_string()))
