@@ -34,13 +34,13 @@ pub const DEFAULT_TOKEN_LIFESPAN: i64 = 60 * 60;
 /// let token = generator.token::<DefaultClaims>(aud, None).unwrap();
 /// let token_data = validator.decode::<DefaultClaims>(&token, &vec!["service01"]);
 /// ```
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct NoClaims;
 pub type DefaultClaims = Claims<NoClaims>;
 
 /// Since the `aud` claim may be either a `String` or `Vec<String>`, use this
 /// struct to ensure that the value is serialised and deserialised correctly.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum Aud {
   /// Becomes: `"aud": "your-audience"`.
@@ -50,26 +50,26 @@ pub enum Aud {
 }
 
 /// A claims struct that contains the required ASAP fields.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Claims<T> {
     /// SPEC: A value that identifies the resource server.
-    aud: Aud,
+    pub aud: Aud,
     /// SPEC: The service identifier of the client.
-    iss: String,
+    pub iss: String,
     /// SPEC: A generated nonce value that is unique within the  temporal window
     /// of the token life time. The client MUST ensure that  there is a very low
     /// probability that at any point in time there are more than one valid and
     /// non-expired tokens with the same `jti` value, considering that there
     /// may be many issuers and many instances of the same issuer.
-    jti: String,
+    pub jti: String,
     /// SPEC: The current time according to the client's internal clock.
-    iat: i64,
+    pub iat: i64,
     /// SPEC: A time in the future (`exp` MUST be after `iat`). For security
     /// reasons, the client SHOULD issue short-lived tokens. If the environment
     /// can guarantee a good synchronisation between the internal clocks of the
     /// systems involved in the communication, a sub-minute expire time is
     /// recommended. There is a hard limit of one hour.
-    exp: i64,
+    pub exp: i64,
 
     /// Extra claims may be added to the token. These values will be serialised
     /// into the root of the token. If `None` is passed then no extra claims
