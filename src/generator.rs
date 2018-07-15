@@ -75,14 +75,13 @@
 //! generator.token(aud, extra_claims).unwrap();
 //! ```
 
-use jwt;
 use claims::{Aud, ClaimsBuilder};
+use jwt;
 use serde::ser::Serialize;
 use std::env;
 
 use errors::{Result, ResultExt};
-use util::{convert_pem_to_der};
-
+use util::convert_pem_to_der;
 
 /// An ASAP generator.
 ///
@@ -307,7 +306,11 @@ impl Generator {
     /// let auth_header = generator.auth_header(aud, extra_claims).unwrap();
     /// println!("{:?}", auth_header); // "Bearer eyJ0eXAiOiJKV..."
     /// ```
-    pub fn auth_header<T: Serialize>(&mut self, aud: Aud, extra_claims: Option<T>) -> Result<String> {
+    pub fn auth_header<T: Serialize>(
+        &mut self,
+        aud: Aud,
+        extra_claims: Option<T>,
+    ) -> Result<String> {
         Ok(format!("Bearer {}", self.token(aud, extra_claims)?))
     }
 }

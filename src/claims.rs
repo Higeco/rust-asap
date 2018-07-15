@@ -43,10 +43,20 @@ pub type DefaultClaims = Claims<NoClaims>;
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum Aud {
-  /// Becomes: `"aud": "your-audience"`.
-  One(String),
-  /// Becomes: `"aud": ["list", "of", "your", "audiences"]`.
-  Many(Vec<String>),
+    /// Becomes: `"aud": "your-audience"`.
+    One(String),
+    /// Becomes: `"aud": ["list", "of", "your", "audiences"]`.
+    Many(Vec<String>),
+}
+
+impl Aud {
+    pub fn from_str<S: Into<String>>(aud: S) -> Aud {
+        Aud::One(aud.into())
+    }
+
+    pub fn from_vec(list: Vec<&str>) -> Aud {
+        Aud::Many(list.iter().map(|s| s.to_string()).collect())
+    }
 }
 
 /// A claims struct that contains the required ASAP fields.
@@ -77,7 +87,7 @@ pub struct Claims<T> {
     ///
     /// WARNING: take care **not to overwrite any of the above required claims**.
     #[serde(flatten)]
-    pub extra_claims: Option<T>
+    pub extra_claims: Option<T>,
 }
 
 /// A nice helper that is used when creating the `Claims` struct for token
@@ -111,7 +121,13 @@ impl ClaimsBuilder {
         let iat = Utc::now().timestamp();
         let exp = iat + self.lifespan;
 
-
-        Claims {aud, iss, iat, exp, jti, extra_claims}
+        Claims {
+            aud,
+            iss,
+            iat,
+            exp,
+            jti,
+            extra_claims,
+        }
     }
 }

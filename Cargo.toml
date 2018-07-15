@@ -1,5 +1,8 @@
 [workspace]
-members = ["support/keyserver"]
+members = [
+  "asap-cli",
+  "support/keyserver"
+]
 
 [package]
 name = "asap"
