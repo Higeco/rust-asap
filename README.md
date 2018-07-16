@@ -1,8 +1,8 @@
 # ASAP for Rust
 
 [![crates.io](https://img.shields.io/crates/v/asap.svg)](https://crates.io/crates/asap)
-[![dependency status](https://deps.rs/repo/bitbucket/cosmotherly/rust-asap/status.svg)](https://deps.rs/repo/bitbucket/cosmotherly/rust-asap)
-[![build status](https://img.shields.io/bitbucket/pipelines/cosmotherly/rust-asap.svg)](https://bitbucket.org/cosmotherly/rust-asap/addon/pipelines/home#!/)
+[![dependency status](https://deps.rs/repo/bitbucket/atlassianlabs/rust-asap/status.svg)](https://deps.rs/repo/bitbucket/atlassianlabs/rust-asap)
+[![build status](https://img.shields.io/bitbucket/pipelines/atlassianlabs/rust-asap.svg)](https://bitbucket.org/atlassianlabs/rust-asap/addon/pipelines/home#!/)
 
 [Documentation](https://docs.rs/asap).
 
@@ -56,4 +56,12 @@ run in parallel.
 
 ## License
 
-[MIT](./LICENSE.md)
+This library is dual licensed under either of the following, at your option:
+
+* Apache License, Version 2.0, (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
+* MIT License (LICENSE-MIT or http://opensource.org/licenses/MIT)
+
+## Disclaimer
+
+This is not an official Atlassian product (experimental or otherwise), it is just code that happens to be owned by Atlassian.
+
