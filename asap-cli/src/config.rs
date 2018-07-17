@@ -1,10 +1,10 @@
 use asap::claims::Aud;
-use directories::BaseDirs;
+use directories::ProjectDirs;
 use pem;
 use serde_json::{self, Value};
 use std::env;
 use std::fs::{self, File};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use errors::Result;
 use opt::Opt;
@@ -70,19 +70,21 @@ impl Config {
         Ok(config)
     }
 
-    /// Loads the default config.
+    /// Attempts to load the default config.
     ///
-    /// First, the `pwd` directory is searched (`~/.asap-config`), and if not
-    /// found, then the user's home directory is searched. If no config is found
-    /// then an empty config is used.
+    /// First, the `pwd` directory is searched for `.asap-config`, and if not
+    /// found, then the user's config directory is searched.
     fn from_dirs() -> Result<Config> {
-        Config::from_file(env::current_dir()?.join(CONFIG_BASENAME)).or_else(|_| {
-            if let Some(dirs) = BaseDirs::new() {
-                Config::from_file(dirs.config_dir().join(CONFIG_BASENAME))
-            } else {
-                Err(format_err!("failed to find config directory"))
-            }
-        })
+        Config::from_file(env::current_dir()?.join(CONFIG_BASENAME))
+            .or_else(|_| Config::from_file(default_config_path()?))
+    }
+}
+
+pub fn default_config_path() -> Result<PathBuf> {
+    if let Some(dirs) = ProjectDirs::from("com", "atlassian", "asap") {
+        Ok(dirs.config_dir().join(CONFIG_BASENAME))
+    } else {
+        Err(format_err!("failed to find config directory"))
     }
 }
 
