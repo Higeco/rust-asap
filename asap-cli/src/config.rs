@@ -1,4 +1,5 @@
 use asap::claims::Aud;
+use directories::BaseDirs;
 use pem;
 use serde_json::{self, Value};
 use std::env;
@@ -7,6 +8,17 @@ use std::path::Path;
 
 use errors::Result;
 use opt::Opt;
+
+pub const CONFIG_BASENAME: &'static str = ".asap-config";
+
+#[derive(Debug, Fail)]
+pub enum ConfigError {
+    #[fail(display = "failed to parse config from {}: {}", _0, _1)]
+    CustomConfig(String, String),
+
+    #[fail(display = "failed to find configuration files: {}", _0)]
+    NotFound(String),
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -24,13 +36,14 @@ impl Config {
     }
 
     /// Creates a config from the options passed to the binary.
-    pub fn from_opt(opt: &Opt) -> Config {
+    pub fn from_opt(opt: &Opt) -> Result<Config> {
         // Load config either from pass or the default locations.
-        let mut config = if opt.config_path.is_some() {
-            Config::from_file(opt.config_path.as_ref().unwrap())
-                .expect("failed to parse config from file")
+        let mut config = if let Some(ref path) = opt.config_path.as_ref() {
+            Config::from_file(path).map_err(|err| {
+                ConfigError::CustomConfig(path.display().to_string(), err.to_string())
+            })?
         } else {
-            Config::default()
+            Config::from_dirs().map_err(|e| ConfigError::NotFound(e.to_string()))?
         };
 
         // Custom claims supplied on the command line.
@@ -54,30 +67,21 @@ impl Config {
             config.extra_claims = Some(extra_claims);
         }
 
-        config
+        Ok(config)
     }
-}
 
-impl Default for Config {
     /// Loads the default config.
     ///
     /// First, the `pwd` directory is searched (`~/.asap-config`), and if not
     /// found, then the user's home directory is searched. If no config is found
     /// then an empty config is used.
-    fn default() -> Config {
-        let path = env::current_dir()
-            .expect("failed to find current directory")
-            .join(".asap-config");
-
-        Config::from_file(path).unwrap_or_else(|_| {
-            let path = env::home_dir()
-                .expect("failed to find home directory")
-                .join(".asap-config");
-
-            Config::from_file(path).unwrap_or_else(|_| {
-                eprintln!("No ASAP configuration found! Have you run `asap init`?");
-                ::std::process::exit(1);
-            })
+    fn from_dirs() -> Result<Config> {
+        Config::from_file(env::current_dir()?.join(CONFIG_BASENAME)).or_else(|_| {
+            if let Some(dirs) = BaseDirs::new() {
+                Config::from_file(dirs.config_dir().join(CONFIG_BASENAME))
+            } else {
+                Err(format_err!("failed to find config directory"))
+            }
         })
     }
 }
