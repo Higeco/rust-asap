@@ -2,8 +2,12 @@ use clap;
 use std::path::PathBuf;
 
 #[derive(StructOpt, Debug)]
-#[structopt(raw(setting = "clap::AppSettings::ColoredHelp"))]
-/// CLI interface for ASAP
+#[structopt(
+    author = "",
+    after_help = "For issues, see: https://bitbucket.org/atlassianlabs/rust-asap/issues",
+    raw(setting = "clap::AppSettings::ColoredHelp")
+)]
+/// Simple and easy ASAP tokens on the commands line.
 pub struct Opt {
     /// Path of the configuration file to use when generating tokens
     #[structopt(long = "config", short = "c", parse(from_os_str))]

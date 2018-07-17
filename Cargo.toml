@@ -9,7 +9,12 @@ name = "asap"
 readme = "README.md"
 version = "0.4.0"
 license = "MIT"
-authors = ["cosmotherly <cosmotherly@atlassian.com>"]
+authors = [
+  "Callum Osmotherly <cosmotherly@atlassian.com>",
+  "Robin Stocker <rstocker@atlassian.com>",
+  "Antoine Büsch <abusch@atlassian.com>",
+  "Sam Reis <sreis@atlassian.com>",
+]
 keywords = ["asap", "jwt", "api", "token", "authorisation"]
 homepage = "https://bitbucket.org/atlassianlabs/rust-asap/"
 repository = "https://bitbucket.org/atlassianlabs/rust-asap/"
