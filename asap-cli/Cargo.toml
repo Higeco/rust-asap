@@ -2,10 +2,10 @@
 name = "asap-cli"
 version = "0.1.0"
 authors = [
-  "cosmotherly <cosmotherly@atlassian.com>",
-  "rstocker <rstocker@atlassian.com>",
-  "abusch <abusch@atlassian.com>",
-  "sreis <sreis@atlassian.com>",
+  "Callum Osmotherly <cosmotherly@atlassian.com>",
+  "Robin Stocker <rstocker@atlassian.com>",
+  "Antoine Büsch <abusch@atlassian.com>",
+  "Sam Reis <sreis@atlassian.com>",
 ]
 homepage = "https://bitbucket.org/atlassianlabs/rust-asap/"
 description = "A command line utility for generating ASAP tokens."
