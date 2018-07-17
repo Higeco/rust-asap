@@ -2,7 +2,7 @@ use clap;
 use std::path::PathBuf;
 
 #[derive(StructOpt, Debug)]
-#[structopt(raw(setting = "clap::AppSettings::ColoredHelp"))]
+#[structopt(author = "", raw(setting = "clap::AppSettings::ColoredHelp"))]
 /// CLI interface for ASAP
 pub struct Opt {
     /// Path of the configuration file to use when generating tokens
