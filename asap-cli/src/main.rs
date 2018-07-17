@@ -56,7 +56,7 @@ fn main() {
         // Run the desired subcommand.
         check_result(match opt.subcommand {
             SubCommand::Init => Ok(()),
-            SubCommand::CURL { args } => curl::run(&config, args),
+            SubCommand::Curl { args } => curl::run(&config, args),
             SubCommand::Token {
                 auth_header,
                 full_header,

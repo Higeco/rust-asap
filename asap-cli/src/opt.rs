@@ -51,5 +51,5 @@ pub enum SubCommand {
         raw(setting = "clap::AppSettings::TrailingVarArg"),
         raw(setting = "clap::AppSettings::AllowLeadingHyphen")
     )]
-    CURL { args: Vec<String> },
+    Curl { args: Vec<String> },
 }
