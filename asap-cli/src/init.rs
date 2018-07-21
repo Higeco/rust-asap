@@ -3,7 +3,7 @@ use config::{self, Config};
 use serde_json;
 use std::env;
 use std::fs::{create_dir_all, File};
-use std::io::{self, stdout, Write};
+use std::io::{stdin, stdout, Write};
 use std::path::PathBuf;
 
 use config::{default_config_path, CONFIG_BASENAME};
@@ -65,9 +65,7 @@ fn read_line(prompt: &str) -> String {
     stdout().flush().unwrap();
 
     let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .expect("failed to read stdin");
+    stdin().read_line(&mut input).expect("failed to read stdin");
 
     // Remove trailing newline.
     input.pop();
