@@ -79,6 +79,6 @@ fn parse_audience(input: String) -> Aud {
     if input.contains(",") {
         Aud::from_vec(input.split(',').collect())
     } else {
-        Aud::from_str(format!("\"{}\"", input))
+        Aud::from_str(format!("{}", input))
     }
 }
