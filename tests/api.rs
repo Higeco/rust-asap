@@ -47,7 +47,7 @@ impl ExtraClaims {
 
 fn get_validator_builder(keyserver_url: &str) -> ValidatorBuilder {
     let resource_server_audience = String::from(ISS_01);
-    Validator::builder(String::from(keyserver_url), resource_server_audience)
+    Validator::builder(vec![String::from(keyserver_url)], resource_server_audience)
 }
 
 
@@ -387,7 +387,7 @@ fn it_fails_with_no_public_key() {
     let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();
     match validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Failed to retrieve public key from keyserver: NotFound")
+        Err(e) => assert_eq!(format!("{}", e), "Failed to retrieve public key from keyserver: \"Failed to fetch a key from any keyserver\"")
     }
 }
 
@@ -397,9 +397,11 @@ fn it_uses_the_fallback_keyserver() {
     let mut generator = default_generator();
 
     // Ensure the first keyserver fails.
-    let invalid_url = "http://not-a-real-server:1234/".to_string();
-    let mut validator = Validator::builder(invalid_url, ISS_01.to_string())
-        .fallback_keyserver(keyserver.url().to_string())
+    let keyserver_urls = vec![
+        "http://not-a-real-server:1234/".to_string(),
+        keyserver.url().to_string()
+    ];
+    let mut validator = Validator::builder(keyserver_urls, ISS_01.to_string())
         .build();
 
     let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();

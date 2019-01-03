@@ -60,14 +60,16 @@
 //!
 //! let asap_token = "<your-asap-token>";
 //!
-//! // The keyserver which hosts your public keys.
-//! let keyserver = "http://my-keyserver/".to_string();
+//! // The keyserver(s) which hosts your public keys.
+//! let keyservers = vec![
+//!   "http://my-keyserver/".to_string(),
+//!   "http://my-fallback-keyserver/".to_string()
+//! ];
 //! // The audience of the server/resource that validates the incoming tokens.
 //! let resource_server_audience = "my-server".to_string();
 //!
 //! // Build the ASAP validator:
-//! let mut validator = Validator::builder(keyserver, resource_server_audience)
-//!     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
+//! let mut validator = Validator::builder(keyservers, resource_server_audience)
 //!     .build();
 //!
 //! // A list of issuers that are allowed to access this server/resource.

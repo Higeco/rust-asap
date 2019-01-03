@@ -20,10 +20,12 @@
 //! # let asap_token = "<your-token-here>";
 //! #
 //! # // Construct the ASAP validator:
-//! # let keyserver = "http://my-keyserver/".to_string();
+//! let keyservers = vec![
+//!   "http://my-keyserver/".to_string(),
+//!   "http://my-fallback-keyserver/".to_string()
+//! ];
 //! # let resource_server_audience = "my-server".to_string();
-//! let mut validator = Validator::builder(keyserver, resource_server_audience)
-//!     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
+//! let mut validator = Validator::builder(keyservers, resource_server_audience)
 //!     .build();
 //!
 //! match validator.decode::<Claims<ExtraClaims>>(asap_token, &vec!["authorized", "subjects"]) {
@@ -64,10 +66,8 @@ pub struct ValidatorBuilder {
     /// The identifier of the resource server. Incoming ASAP tokens must include
     /// this identifier in their `aud` claim in order for the token to be valid.
     resource_server_audience: Option<String>,
-    /// The keyserver URL. Must have a trailing "/".
-    keyserver_url: Option<String>,
-    /// The fallback keyserver URL. Must have a trailing "/".
-    fallback_keyserver_url: Option<String>,
+    /// A list of keyserver URLs. Each must have a trailing "/".
+    keyserver_urls: Option<Vec<String>>,
     /// Since validating time fields is always a bit tricky due to clock skew,
     /// this field adds `leeway` to the `iat`, `exp` and `nbf` validation (which
     /// are measured in seconds).
@@ -105,22 +105,20 @@ impl ValidatorBuilder {
     /// # use std::time::Duration;
     /// # use asap::validator::{Validator, ValidatorBuilder};
     ///
-    /// let keyserver = "http://my-keyserver/".to_string();
+    /// let keyservers = vec!["http://my-keyserver/".to_string()];
     /// let resource_server_audience = "my-server".to_string();
-    /// let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
+    /// let mut validator = ValidatorBuilder::new(keyservers, resource_server_audience)
     ///     .leeway(5)
     ///     .max_lifespan(120)
     ///     .cache_duration(Duration::from_secs(300))
     ///     .validate_kid(true)
     ///     .validate_jti(true)
-    ///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
     ///     .build();
     /// ```
-    pub fn new(keyserver_url: String, resource_server_audience: String) -> ValidatorBuilder {
+    pub fn new(keyserver_urls: Vec<String>, resource_server_audience: String) -> ValidatorBuilder {
         ValidatorBuilder {
             resource_server_audience: Some(resource_server_audience),
-            keyserver_url: Some(keyserver_url.to_string()),
-            fallback_keyserver_url: Some(keyserver_url),
+            keyserver_urls: Some(keyserver_urls),
 
             leeway: None,
             max_lifespan: None,
@@ -128,14 +126,6 @@ impl ValidatorBuilder {
             validate_jti: false,
             cache_duration: None,
         }
-    }
-
-    /// Sets the `fallback_keyserver` for the `Validator`.
-    ///
-    /// Default is the primary `keyserver` (given in `ValidatorBuilder::new()`).
-    pub fn fallback_keyserver(&mut self, url: String) -> &mut ValidatorBuilder {
-        self.fallback_keyserver_url = Some(url);
-        self
     }
 
     /// Sets the `leeway` for the `Validator`.
@@ -182,6 +172,23 @@ impl ValidatorBuilder {
         self
     }
 
+    /// Adds an additional keyserver for the `Validator`.
+    ///
+    /// ```rust
+    /// # use asap::validator::ValidatorBuilder;
+    /// # use asap::validator::Validator;
+    ///
+    /// let keyservers = vec!["http://my-keyserver/".to_string()];
+    ///
+    /// let mut validator = Validator::builder(keyservers, "my-server".to_string())
+    ///     .keyserver("http://my-additional-keyserver/".to_string())
+    ///     .build();
+    /// ```
+    pub fn keyserver(&mut self, keyserver: String) -> &mut ValidatorBuilder {
+        self.keyserver_urls.as_mut().unwrap().push(keyserver);
+        self
+    }
+
     /// Builds and returns a `Validator` with the configured options.
     pub fn build(&mut self) -> Validator {
         let jwt_validator = jwt::Validation {
@@ -203,8 +210,7 @@ impl ValidatorBuilder {
             max_lifespan: max(0, self.max_lifespan.unwrap_or(DEFAULT_MAX_LIFESPAN)),
             jwt_validator,
 
-            keyserver_url: self.keyserver_url.take().unwrap(),
-            fallback_keyserver_url: self.fallback_keyserver_url.take().unwrap(),
+            keyserver_urls: self.keyserver_urls.take().unwrap(),
             resource_server_audience: self.resource_server_audience.take().unwrap(),
 
             validate_kid: self.validate_kid,
@@ -246,10 +252,9 @@ impl ValidatorBuilder {
 /// # use asap::validator::Validator;
 /// #
 /// // Construct the ASAP validator:
-/// let keyserver = "http://my-keyserver/".to_string();
+/// let keyservers = vec!["http://my-keyserver/".to_string()];
 /// let resource_server_audience = "my-server".to_string();
-/// let mut validator = Validator::builder(keyserver, resource_server_audience)
-///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
+/// let mut validator = Validator::builder(keyservers, resource_server_audience)
 ///     .build();
 ///
 /// // Any extra claims you'd like to pull out of the token:
@@ -303,10 +308,8 @@ pub struct Validator {
     /// The max lifespan of the token (the difference between `exp` and `iat`).
     /// The ASAP spec defines a hard upper limit of one hour.
     max_lifespan: i64,
-    /// The keyserver URL. Must have a trailing "/".
-    keyserver_url: String,
-    /// The fallback keyserver URL. Must have a trailing "/".
-    fallback_keyserver_url: String,
+    /// A list of keyserver URLs. Each must have a trailing "/".
+    keyserver_urls: Vec<String>,
     /// A hash-map used to store and check seen `jti` nonces.
     jti_seen: HashSet<String>,
     /// A hash-map used for simple key-caching.
@@ -322,20 +325,19 @@ impl Validator {
     /// # use std::time::Duration;
     /// # use asap::validator::Validator;
     ///
-    /// let keyserver = "http://my-keyserver/".to_string();
+    /// let keyservers = vec!["http://my-keyserver/".to_string()];
     /// let resource_server_audience = "my-server".to_string();
     ///
-    /// let mut validator = Validator::builder(keyserver, resource_server_audience)
+    /// let mut validator = Validator::builder(keyservers, resource_server_audience)
     ///     .leeway(5)
     ///     .max_lifespan(120)
     ///     .validate_kid(true)
     ///     .validate_jti(true)
     ///     .cache_duration(Duration::from_secs(300))
-    ///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
     ///     .build();
     /// ```
-    pub fn builder(keyserver_url: String, resource_server_audience: String) -> ValidatorBuilder {
-        ValidatorBuilder::new(keyserver_url, resource_server_audience)
+    pub fn builder(keyserver_urls: Vec<String>, resource_server_audience: String) -> ValidatorBuilder {
+        ValidatorBuilder::new(keyserver_urls, resource_server_audience)
     }
 
     /// Instantiates a validator builder from the environment. Requires that the
@@ -362,9 +364,11 @@ impl Validator {
         };
 
         let keyserver_url = get_env_var("ASAP_KEYSERVER_URL")?;
+        // TODO
+        let fallback_keyserver_url = get_env_var("ASAP_FALLBACK_KEYSERVER_URL")?;
         let resource_server_audience = get_env_var("ASAP_SERVER_AUDIENCE")?;
 
-        Ok(ValidatorBuilder::new(keyserver_url, resource_server_audience))
+        Ok(ValidatorBuilder::new(vec![keyserver_url, fallback_keyserver_url], resource_server_audience))
     }
 
     // Attempt to fetch the public key from cache.
@@ -390,7 +394,7 @@ impl Validator {
             response.read_to_end(&mut public_key)?;
             Ok(public_key)
         } else {
-            Err(ValidatorError::KeyserverError(response.status()).into())
+            Err(ValidatorError::KeyserverError(response.status().to_string()).into())
         }
     }
 
@@ -419,15 +423,14 @@ impl Validator {
         }
 
         // Otherwise, fetch the public key from the keyserver(s).
-        self.get_key_from_server(&self.keyserver_url, &kid)
-            .or_else(|e| {
-                eprintln!(
-                    "Error fetching from keyserver, reason: {}. \
-                     Trying fallback keyserver...",
-                    e
-                );
-                self.get_key_from_server(&self.fallback_keyserver_url, &kid)
-            })
+        for url in &self.keyserver_urls {
+            let result = self.get_key_from_server(&url, &kid);
+            if result.is_ok() {
+                return result;
+            }
+        }
+
+        Err(ValidatorError::KeyserverError("Failed to fetch a key from any keyserver".to_string()).into())
     }
 
     /// Decodes and validates the given token, returning both its claims and
@@ -451,10 +454,12 @@ impl Validator {
     /// # use asap::validator::Validator;
     /// #
     /// // Construct the ASAP validator:
-    /// let keyserver = "http://my-keyserver/".to_string();
+    /// let keyservers = vec![
+    ///   "http://my-keyserver/".to_string(),
+    ///   "http://my-fallback-keyserver/".to_string()
+    /// ];
     /// let resource_server_audience = "my-server".to_string();
-    /// let mut validator = Validator::builder(keyserver, resource_server_audience)
-    ///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
+    /// let mut validator = Validator::builder(keyservers, resource_server_audience)
     ///     .build();
     ///
     /// // Any extra claims you'd like to pull out of the token:

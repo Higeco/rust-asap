@@ -24,9 +24,8 @@ pub const DEFAULT_TOKEN_LIFESPAN: i64 = 60 * 60;
 /// # let kid = "service01/my-key-id".to_string();
 /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
 /// # let mut generator = Generator::new(iss, kid, private_key);
-/// # let keyserver = "http://my-keyserver/".to_string();
-/// # let mut validator = Validator::builder(keyserver, "service02".to_string())
-/// #     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
+/// # let keyservers = vec!["http://my-keyserver/".to_string()];
+/// # let mut validator = Validator::builder(keyservers, "service02".to_string())
 /// #     .build();
 /// #
 /// // Since the compiler needs type information, you can use `DefaultClaims` to
