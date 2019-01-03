@@ -7,7 +7,7 @@ members = [
 [package]
 name = "asap"
 readme = "README.md"
-version = "0.4.0"
+version = "0.4.1"
 license = "MIT"
 authors = [
   "Callum Osmotherly <cosmotherly@atlassian.com>",
@@ -36,7 +36,7 @@ serde_derive = "1"
 bencher = "0.1.5"
 # Currently publishing this as a separate crate.
 # https://github.com/rust-lang/cargo/issues/4242
-asap_deps_keyserver = "0.1.0"
+asap_deps_keyserver = { path = "support/keyserver", version = "0.1.0" }
 
 [[bench]]
 name = "tokens"
