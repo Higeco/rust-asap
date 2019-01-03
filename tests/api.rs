@@ -1,7 +1,7 @@
 extern crate asap;
 extern crate chrono;
 extern crate jsonwebtoken as jwt;
-extern crate keyserver;
+extern crate asap_deps_keyserver as keyserver;
 extern crate reqwest;
 extern crate serde;
 extern crate serde_json;

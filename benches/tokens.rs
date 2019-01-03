@@ -3,7 +3,7 @@ extern crate asap;
 extern crate bencher;
 extern crate chrono;
 extern crate jsonwebtoken as jwt;
-extern crate keyserver;
+extern crate asap_deps_keyserver as keyserver;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;

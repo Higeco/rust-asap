@@ -1,7 +1,11 @@
 [package]
-name = "keyserver"
+name = "asap_deps_keyserver"
 version = "0.1.0"
-authors = ["cosmotherly <cosmotherly@atlassian.com>"]
+license = "MIT"
+authors = ["Callum Osmotherly <cosmotherly@atlassian.com>"]
+homepage = "https://bitbucket.org/atlassianlabs/rust-asap/"
+repository = "https://bitbucket.org/atlassianlabs/rust-asap/"
+description = "This is a dev-dependency of rust-asap."
 
 [dependencies]
 hyper = "0.12.5"
