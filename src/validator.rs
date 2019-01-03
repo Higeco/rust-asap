@@ -175,9 +175,7 @@ impl ValidatorBuilder {
     /// Adds an additional keyserver for the `Validator`.
     ///
     /// ```rust
-    /// # use asap::validator::ValidatorBuilder;
-    /// # use asap::validator::Validator;
-    ///
+    /// # use asap::validator::{Validator, ValidatorBuilder};
     /// let keyservers = vec!["http://my-keyserver/".to_string()];
     ///
     /// let mut validator = Validator::builder(keyservers, "my-server".to_string())
@@ -364,7 +362,6 @@ impl Validator {
         };
 
         let keyserver_url = get_env_var("ASAP_KEYSERVER_URL")?;
-        // TODO
         let fallback_keyserver_url = get_env_var("ASAP_FALLBACK_KEYSERVER_URL")?;
         let resource_server_audience = get_env_var("ASAP_SERVER_AUDIENCE")?;
 
