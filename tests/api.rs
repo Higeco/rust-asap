@@ -73,9 +73,26 @@ fn validate_claims(token_data: TokenData<Claims<ExtraClaims>>, expected_aud: Aud
     assert_eq!(token_data.claims.extra_claims, extra_claims);
 }
 
+fn setup_env(keyserver: &Keyserver) {
+    // Setup environment for the validator.
+    env::set_var("ASAP_SERVER_AUDIENCE", ISS_01);
+    env::set_var("ASAP_KEYSERVER_URL", keyserver.url());
+    env::set_var("ASAP_FALLBACK_KEYSERVER_URL", keyserver.url());
+    // Setup environment for the generator.
+    env::set_var("ASAP_KEY_ID", KID_01);
+    env::set_var("ASAP_ISSUER", ISS_01);
+    env::set_var("ASAP_PRIVATE_KEY", include_str!("../support/keys/service01/1530402390-private.pem"));
+}
 
-
-
+fn teardown_env() {
+    // Tear down environment.
+    env::remove_var("ASAP_SERVER_AUDIENCE");
+    env::remove_var("ASAP_KEYSERVER_URL");
+    env::remove_var("ASAP_FALLBACK_KEYSERVER_URL");
+    env::remove_var("ASAP_KEY_ID");
+    env::remove_var("ASAP_ISSUER");
+    env::remove_var("ASAP_PRIVATE_KEY");
+}
 
 /**
  * Tests.
@@ -118,28 +135,28 @@ fn it_works() {
 fn instantiates_from_environment() {
     let keyserver = Keyserver::start();
 
-    // Setup environment for the validator.
-    env::set_var("ASAP_SERVER_AUDIENCE", ISS_01);
-    env::set_var("ASAP_KEYSERVER_URL", keyserver.url());
-    env::set_var("ASAP_FALLBACK_KEYSERVER_URL", keyserver.url());
-    // Setup environment for the generator.
-    env::set_var("ASAP_KEY_ID", KID_01);
-    env::set_var("ASAP_ISSUER", ISS_01);
-    env::set_var("ASAP_PRIVATE_KEY", include_str!("../support/keys/service01/1530402390-private.pem"));
+    // Stand from env
+    {
+        setup_env(&keyserver);
+        let mut generator = Generator::from_env().unwrap();
+        let mut validator = Validator::from_env().unwrap().build();
+        let token = generator.token(default_aud(), Some(ExtraClaims::new())).unwrap();
+        let token_data = validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]).unwrap();
+        validate_claims(token_data, default_aud(), Some(ExtraClaims::new()));
+        teardown_env()
+    }
 
-    let mut generator = Generator::from_env().unwrap();
-    let mut validator = Validator::from_env().unwrap().build();
-    let token = generator.token(default_aud(), Some(ExtraClaims::new())).unwrap();
-    let token_data = validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]).unwrap();
-    validate_claims(token_data, default_aud(), Some(ExtraClaims::new()));
-
-    // Tear down environment.
-    env::remove_var("ASAP_SERVER_AUDIENCE");
-    env::remove_var("ASAP_KEYSERVER_URL");
-    env::remove_var("ASAP_FALLBACK_KEYSERVER_URL");
-    env::remove_var("ASAP_KEY_ID");
-    env::remove_var("ASAP_ISSUER");
-    env::remove_var("ASAP_PRIVATE_KEY");
+    // Test that it uses the fallback keyserver
+    {
+        setup_env(&keyserver);
+        env::set_var("ASAP_KEYSERVER_URL", "http://not-a-real-server/".to_string());
+        let mut generator = Generator::from_env().unwrap();
+        let mut validator = Validator::from_env().unwrap().build();
+        let token = generator.token(default_aud(), Some(ExtraClaims::new())).unwrap();
+        let token_data = validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]).unwrap();
+        validate_claims(token_data, default_aud(), Some(ExtraClaims::new()));
+        teardown_env()
+    }
 }
 
 #[test]
@@ -387,7 +404,7 @@ fn it_fails_with_no_public_key() {
     let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();
     match validator.decode::<Claims<ExtraClaims>>(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Failed to retrieve public key from keyserver: NotFound")
+        Err(e) => assert_eq!(format!("{}", e), "Failed to retrieve public key from keyserver: \"Failed to fetch a key from any keyserver\"")
     }
 }
 
@@ -397,9 +414,10 @@ fn it_uses_the_fallback_keyserver() {
     let mut generator = default_generator();
 
     // Ensure the first keyserver fails.
-    let invalid_url = "http://not-a-real-server:1234/".to_string();
-    let mut validator = Validator::builder(invalid_url, ISS_01.to_string())
-        .fallback_keyserver(keyserver.url().to_string())
+    let invalid_keyserver = "http://not-a-real-server:1234/".to_string();
+    let valid_keyserver = keyserver.url().to_string();
+    let mut validator = Validator::builder(invalid_keyserver, ISS_01.to_string())
+        .fallback_keyserver(valid_keyserver)
         .build();
 
     let token = generator.token::<Claims<ExtraClaims>>(default_aud(), None).unwrap();

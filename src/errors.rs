@@ -1,6 +1,5 @@
 use jwt;
 use std::result::{Result as StdResult};
-use reqwest;
 use failure::{Error, SyncFailure};
 
 // A handy alias for `Result` that carries a generic error type.
@@ -43,7 +42,7 @@ pub enum ValidatorError {
     CacheError,
 
     #[fail(display = "Failed to retrieve public key from keyserver: {:?}", _0)]
-    KeyserverError(reqwest::StatusCode),
+    KeyserverError(String),
 
     #[fail(display = "Expired item: {:?}", _0)]
     ExpiredCache(String),
