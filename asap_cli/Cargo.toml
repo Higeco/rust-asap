@@ -1,0 +1,30 @@
+[package]
+name = "asap_cli"
+version = "0.1.0"
+authors = [
+  "Callum Osmotherly <cosmotherly@atlassian.com>",
+  "Robin Stocker <rstocker@atlassian.com>",
+  "Antoine Büsch <abusch@atlassian.com>",
+  "Sam Reis <sreis@atlassian.com>",
+]
+license = "MIT"
+keywords = ["asap", "jwt", "api", "token", "authorisation"]
+homepage = "https://bitbucket.org/atlassianlabs/rust-asap/"
+description = "A helpful command line utility for using ASAP."
+
+[dependencies]
+asap = { path = "../asap", version = "0.5.0" }
+structopt = "0.2"
+clap = "2"
+directories = "1.0"
+human-panic = "1.0"
+failure = "0.1.1"
+failure_derive = "0.1.1"
+pem = "0.5.0"
+serde = "1.0"
+serde_json = "1.0"
+serde_derive = "1.0"
+
+[[bin]]
+name = "asap"
+path = "src/main.rs"
