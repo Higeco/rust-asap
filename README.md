@@ -17,7 +17,20 @@ This is a rust library for generating and validating ASAP tokens. It provides op
 
 Basically, yes. Yes, you should use this library if you want ASAP and use Rust.
 
-## Usage
+This repository also provides a useful tool for using ASAP on the command line:
+
+```bash
+# Install the binary:
+cargo install asap_cli
+
+# Setup your ASAP keys:
+asap init
+
+# Make an ASAP authorised request via curl:
+asap curl https://my-asap-secured-server/
+```
+
+## Usage (library)
 
 ### Installation
 
@@ -34,6 +47,14 @@ serde = "1"
 ### Documentation
 
 And see [the documentation and API](https://docs.rs/asap) which should be straightforward enough for anything you'd need.
+
+## Usage (binary)
+
+See the help output from the binary itself by running:
+
+```bash
+asap help
+```
 
 ## Development/Testing
 
