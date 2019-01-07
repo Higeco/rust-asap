@@ -65,7 +65,7 @@ cargo test
 ```
 
 Note that some tests need a keyserver to work. They start up the [mini
-keyserver in the workspace](./support/keyserver) on a random port at the
+keyserver in the workspace](./asap/support/keyserver) on a random port at the
 beginning of the test. Because each test has its own keyserver, they can
 run in parallel.
 
