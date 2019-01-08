@@ -1,6 +1,6 @@
 [package]
 name = "asap_cli"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
   "Callum Osmotherly <cosmotherly@atlassian.com>",
   "Robin Stocker <rstocker@atlassian.com>",
@@ -13,7 +13,7 @@ homepage = "https://bitbucket.org/atlassianlabs/rust-asap/"
 description = "A helpful command line utility for using ASAP."
 
 [dependencies]
-asap = { path = "../asap", version = "0.5.0" }
+asap = { path = "../asap", version = "0.6.0" }
 structopt = "0.2"
 clap = "2"
 directories = "1.0"
