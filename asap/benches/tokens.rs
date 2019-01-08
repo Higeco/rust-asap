@@ -7,12 +7,15 @@ extern crate asap_deps_keyserver as keyserver;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate serde_json;
 
-use asap::claims::{DefaultClaims, Aud};
+use asap::claims::Aud;
 use asap::generator::Generator;
 use asap::validator::Validator;
 use bencher::Bencher;
 use keyserver::Keyserver;
+use std::collections::HashMap;
 
 // A private key to use to sign the tokens.
 const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/service01/1530402390-private.der");
@@ -31,38 +34,30 @@ fn default_aud() -> Aud {
 
 fn speed_of_generating_tokens(b: &mut Bencher) {
     let mut generator = default_generator();
-    b.iter(|| generator.token::<DefaultClaims>(default_aud(), None).unwrap());
+    b.iter(|| generator.token(default_aud(), None).unwrap());
 }
 
 fn speed_of_generating_tokens_with_extra_claims(b: &mut Bencher) {
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-    struct ExtraClaims {
-        foo: String,
-        bar: i64,
-        baz: Vec<String>
-    }
-    let extra_claims: Option<ExtraClaims> = Some(ExtraClaims {
-            foo: "foo".to_string(),
-            bar: 1234,
-            baz: vec!["baz".to_string(), "bop".to_string()]
-        });
+    let mut extra_claims = HashMap::new();
+    extra_claims.insert("foo".to_string(), json!("foo"));
+    extra_claims.insert("bar".to_string(), json!(1234));
+    extra_claims.insert("baz".to_string(), json!(["baz", "bop"]));
 
     let mut generator = default_generator();
-    b.iter(|| generator.token(default_aud(), extra_claims.clone()).unwrap());
+    b.iter(|| generator.token(default_aud(), Some(extra_claims.clone())).unwrap());
 }
 
 fn speed_of_validating_tokens(b: &mut Bencher) {
     let mut generator = default_generator();
-    let extra_claims: Option<DefaultClaims> = None;
-    let token = generator.token(default_aud(), extra_claims).unwrap();
+    let token = generator.token(default_aud(), None).unwrap();
 
     let keyserver = Keyserver::start();
     let mut validator = Validator::builder(keyserver.url().to_string(), ISS_01.to_string())
         .build();
 
     // Validate once to cache the public key:
-    validator.decode::<DefaultClaims>(&token, &vec![ISS_01]).unwrap();
-    b.iter(|| validator.decode::<DefaultClaims>(&token, &vec![ISS_01]).unwrap());
+    validator.decode(&token, &vec![ISS_01]).unwrap();
+    b.iter(|| validator.decode(&token, &vec![ISS_01]).unwrap());
 }
 
 fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
@@ -76,8 +71,7 @@ fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
     }
 
     let mut generator = default_generator();
-    let extra_claims: Option<DefaultClaims> = None;
-    let token = generator.token(default_aud(), extra_claims).unwrap();
+    let token = generator.token(default_aud(), None).unwrap();
 
     let jwt_validator = jwt::Validation {
         leeway: 0,
@@ -96,12 +90,11 @@ fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
 
 fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
     let mut generator = default_generator();
-    let extra_claims: Option<DefaultClaims> = None;
-    let token = generator.token(default_aud(), extra_claims).unwrap();
+    let token = generator.token(default_aud(), None).unwrap();
 
     let mut validator = Validator::builder("unused".to_string(), ISS_01.to_string())
         .build();
-    b.iter(|| validator.dangerous_unsafe_decode::<DefaultClaims>(&token).unwrap());
+    b.iter(|| validator.dangerous_unsafe_decode(&token).unwrap());
 }
 
 benchmark_group!(generate,

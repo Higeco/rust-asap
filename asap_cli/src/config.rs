@@ -1,7 +1,7 @@
-use asap::claims::Aud;
+use asap::claims::{Aud, ExtraClaims};
 use directories::ProjectDirs;
 use pem;
-use serde_json::{self, Value};
+use serde_json;
 use std::env;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -26,7 +26,7 @@ pub struct Config {
     pub issuer: String,
     pub key_id: String,
     pub private_key: Vec<u8>,
-    pub extra_claims: Option<Value>,
+    pub extra_claims: Option<ExtraClaims>,
 }
 
 impl Config {

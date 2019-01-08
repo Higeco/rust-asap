@@ -6,11 +6,12 @@
 //! # extern crate asap;
 //! # extern crate serde;
 //! # extern crate chrono;
-//! # #[macro_use] extern crate serde_derive;
+//! # #[macro_use] extern crate serde_json;
 //! #
-//! # use asap::claims::{DefaultClaims, Aud};
+//! # use asap::claims::Aud;
 //! # use asap::generator::Generator;
 //! # use serde::de::DeserializeOwned;
+//! # use std::collections::HashMap;
 //! # use chrono::Utc;
 //! #
 //! // The identifier of the service that issues the token (`iss`).
@@ -26,27 +27,28 @@
 //!
 //! // The intended audience of your token:
 //! let aud = Aud::One("target-service".to_string());
-//! // You can add custom extra claims too if you need:
-//! let extra_claims: Option<DefaultClaims> = None;
+//! // To create a normal token with no extra claims:
+//! let extra_claims = None;
 //!
 //! // Authorization tokens: "eyJ0eXAiOiJKV..."
-//! generator.token::<DefaultClaims>(aud, extra_claims).unwrap();
+//! generator.token(aud, extra_claims).unwrap();
 //! // Or authorization headers: "Bearer eyJ0eXAiOiJKV..."
 //! // generator.auth_header(aud, extra_claims).unwrap();
 //! ```
 //!
-//! You may also provide extra claims to your generated token, as long as your
-//! struct can be serialised and deserialised:
+//! You may also provide extra claims to your generated token. To do so, is it
+//! recommended that you use `serde_json`:
 //!
 //! ```rust
 //! # extern crate asap;
 //! # extern crate serde;
 //! # extern crate chrono;
-//! # #[macro_use] extern crate serde_derive;
+//! # #[macro_use] extern crate serde_json;
 //! #
-//! # use asap::claims::{DefaultClaims, Aud};
+//! # use asap::claims::{ExtraClaims, Aud};
 //! # use asap::generator::Generator;
 //! # use serde::de::DeserializeOwned;
+//! # use std::collections::HashMap;
 //! # use chrono::Utc;
 //! #
 //! # // The identifier of the service that issues the token (`iss`).
@@ -59,25 +61,16 @@
 //! # let mut generator = Generator::new(iss, kid, private_key);
 //! # let aud = Aud::One("target-service".to_string());
 //! #
-//! #[derive(Serialize, Deserialize)]
-//! struct ExtraClaims {
-//!     foo: String,
-//!     bar: i64,
-//!     baz: Vec<String>
-//! }
+//! let mut extra_claims = HashMap::new();
+//! extra_claims.insert("myExtraClaim".to_string(), json!("is_really_neat"));
 //!
-//! let extra_claims = Some(ExtraClaims {
-//!     foo: "foo".to_string(),
-//!     bar: 1234,
-//!     baz: vec!["baz".to_string()]
-//! });
-//!
-//! generator.token(aud, extra_claims).unwrap();
+//! // Authorization tokens: "eyJ0eXAiOiJKV..."
+//! // But this time, the token also contains your extra claims.
+//! let token = generator.token(aud, Some(extra_claims)).unwrap();
 //! ```
 
-use claims::{Aud, ClaimsBuilder};
+use claims::{Aud, ClaimsBuilder, ExtraClaims};
 use jwt;
-use serde::ser::Serialize;
 use std::env;
 
 use errors::{Result, ResultExt};
@@ -96,9 +89,9 @@ use util::convert_pem_to_der;
 /// # extern crate asap;
 /// # extern crate serde;
 /// # extern crate chrono;
-/// # #[macro_use] extern crate serde_derive;
+/// # #[macro_use] extern crate serde_json;
 /// #
-/// # use asap::claims::{DefaultClaims, Aud};
+/// # use asap::claims::Aud;
 /// # use asap::generator::Generator;
 /// # use serde::de::DeserializeOwned;
 /// # use chrono::Utc;
@@ -169,7 +162,7 @@ impl Generator {
     /// # extern crate chrono;
     /// # #[macro_use] extern crate serde_derive;
     /// #
-    /// # use asap::claims::{DefaultClaims, Aud};
+    /// # use asap::claims::Aud;
     /// # use asap::generator::Generator;
     /// # use serde::de::DeserializeOwned;
     /// # use chrono::Utc;
@@ -227,19 +220,19 @@ impl Generator {
     ///
     /// Providing `extra_claims = None` will generate a standard ASAP token.
     ///
-    /// You may optionally define your own struct (as long as it implements
-    /// `Serialize` and `Deserialize`) which you can use to add extra claims to
-    /// your token:
+    /// You may optionally provide a `HashMap<String, serde_json::Value>` which
+    /// you can use to add extra claims to the token:
     ///
     /// ```rust
     /// # extern crate asap;
     /// # extern crate serde;
     /// # extern crate chrono;
-    /// # #[macro_use] extern crate serde_derive;
+    /// # #[macro_use] extern crate serde_json;
     /// #
-    /// # use asap::claims::{DefaultClaims, Aud};
+    /// # use asap::claims::Aud;
     /// # use asap::generator::Generator;
     /// # use serde::de::DeserializeOwned;
+    /// # use std::collections::HashMap;
     /// # use chrono::Utc;
     /// #
     /// # // The identifier of the service that issues the token (`iss`).
@@ -257,22 +250,14 @@ impl Generator {
     /// let aud = Aud::Many(vec!["service01".to_string(), "service02".to_string()]);
     ///
     /// // You may also optionally define extra claims to be added to your token:
-    /// #[derive(Serialize, Deserialize)]
-    /// struct ExtraClaims {
-    ///     foo: String,
-    ///     bar: i64,
-    ///     baz: Vec<String>
-    /// }
-    ///
-    /// let extra_claims = ExtraClaims {
-    ///     foo: "foo".to_string(),
-    ///     bar: 1234,
-    ///     baz: vec!["baz".to_string()]
-    /// };
+    /// let mut extra_claims = HashMap::new();
+    /// extra_claims.insert("foo".to_string(), json!("foo"));
+    /// extra_claims.insert("bar".to_string(), json!(1234));
+    /// extra_claims.insert("baz".to_string(), json!(["baz", "bop"]));
     ///
     /// generator.token(aud, Some(extra_claims)).unwrap();
     /// ```
-    pub fn token<T: Serialize>(&mut self, aud: Aud, extra_claims: Option<T>) -> Result<String> {
+    pub fn token(&mut self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Result<String> {
         let claims = self.claims_builder.build(aud, extra_claims);
 
         // Encode it and sign it with the private key.
@@ -286,9 +271,9 @@ impl Generator {
     /// # extern crate asap;
     /// # extern crate serde;
     /// # extern crate chrono;
-    /// # #[macro_use] extern crate serde_derive;
+    /// # #[macro_use] extern crate serde_json;
     /// #
-    /// # use asap::claims::{DefaultClaims, Aud};
+    /// # use asap::claims::Aud;
     /// # use asap::generator::Generator;
     /// # use serde::de::DeserializeOwned;
     /// # use chrono::Utc;
@@ -302,14 +287,13 @@ impl Generator {
     /// #
     /// # let mut generator = Generator::new(iss, kid, private_key);
     /// # let aud = Aud::One("target-audience".to_string());
-    /// # let extra_claims: Option<DefaultClaims> = None;
-    /// let auth_header = generator.auth_header(aud, extra_claims).unwrap();
+    /// let auth_header = generator.auth_header(aud, None).unwrap();
     /// println!("{:?}", auth_header); // "Bearer eyJ0eXAiOiJKV..."
     /// ```
-    pub fn auth_header<T: Serialize>(
+    pub fn auth_header(
         &mut self,
         aud: Aud,
-        extra_claims: Option<T>,
+        extra_claims: Option<ExtraClaims>,
     ) -> Result<String> {
         Ok(format!("Bearer {}", self.token(aud, extra_claims)?))
     }

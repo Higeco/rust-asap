@@ -4,18 +4,11 @@
 //! ```rust
 //! # extern crate asap;
 //! # extern crate serde;
-//! # #[macro_use] extern crate serde_derive;
+//! # #[macro_use] extern crate serde_json;
 //! #
 //! # use asap::claims::Claims;
 //! # use asap::validator::Validator;
 //! #
-//! // Any extra claims you'd like to pull out of the token:
-//! # #[derive(Debug, Serialize, Deserialize, PartialEq)]
-//! # struct ExtraClaims {
-//! #     foo: String,
-//! #     bar: i64,
-//! #     baz: Vec<String>
-//! # }
 //! #
 //! # let asap_token = "<your-token-here>";
 //! #
@@ -26,7 +19,7 @@
 //!     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
 //!     .build();
 //!
-//! match validator.decode::<Claims<ExtraClaims>>(asap_token, &vec!["authorized", "subjects"]) {
+//! match validator.decode(asap_token, &vec!["authorized", "subjects"]) {
 //!     Ok(token_data) => println!("claims {:?}", token_data.claims),
 //!     Err(e) => eprintln!("error validation token/invalid token: {:?}", e)
 //! }
@@ -35,16 +28,14 @@
 use chrono::Utc;
 use jwt::{self, TokenData};
 use reqwest;
-use serde::de::DeserializeOwned;
-use serde::ser::Serialize;
-use serde_json::value::Value;
-use serde_json::{from_str, to_string, Map};
+use serde_json::{from_str, to_string, Map, Value};
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io::Read;
 use std::time::{Duration, SystemTime};
 
+use claims::Claims;
 use errors::{Result, ResultExt, ValidatorError};
 use util::{extract_aud_from_claims, extract_claim};
 
@@ -246,7 +237,7 @@ impl ValidatorBuilder {
 /// ```rust
 /// # extern crate asap;
 /// # extern crate serde;
-/// # #[macro_use] extern crate serde_derive;
+/// # #[macro_use] extern crate serde_json;
 /// #
 /// # use asap::claims::Claims;
 /// # use asap::validator::Validator;
@@ -258,18 +249,10 @@ impl ValidatorBuilder {
 ///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
 ///     .build();
 ///
-/// // Any extra claims you'd like to pull out of the token:
-/// #[derive(Debug, Serialize, Deserialize, PartialEq)]
-/// struct ExtraClaims {
-///     foo: String,
-///     bar: i64,
-///     baz: Vec<String>
-/// }
-///
 /// let asap_token = "<your-token-here>";
 /// let whitelisted_issuers = vec!["list", "of", "whitelisted", "issuers"];
 ///
-/// match validator.decode::<Claims<ExtraClaims>>(asap_token, &whitelisted_issuers) {
+/// match validator.decode(asap_token, &whitelisted_issuers) {
 ///     Ok(token_data) => {
 ///         // Here you have a successfully verified and accepted access token!
 ///         //
@@ -277,7 +260,11 @@ impl ValidatorBuilder {
 ///         // If the resource server successfully verifies and accepts the
 ///         // access token, then it MUST process the request and it MUST assume
 ///         // that the request was issued by the issuer.
-///         println!("claims {:?}", token_data.claims);
+///         println!("claims: {:?}", token_data.claims);
+///
+///         // If there were any extra claims in the token they will be stored
+///         // in this `HashMap<String, serde_json::Value>`:
+///         println!("extra claims: {:?}", token_data.claims.extra_claims);
 ///     },
 ///     Err(e) => {
 ///         // Oh boo, there was an error decoding and validating the ASAP token.
@@ -456,7 +443,7 @@ impl Validator {
     /// ```rust
     /// # extern crate asap;
     /// # extern crate serde;
-    /// # #[macro_use] extern crate serde_derive;
+    /// # #[macro_use] extern crate serde_json;
     /// #
     /// # use asap::claims::Claims;
     /// # use asap::validator::Validator;
@@ -469,22 +456,15 @@ impl Validator {
     ///     .fallback_keyserver(fallback_keyserver)
     ///     .build();
     ///
-    /// // Any extra claims you'd like to pull out of the token:
-    /// #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    /// struct ExtraClaims {
-    ///     foo: String,
-    ///     bar: i64,
-    ///     baz: Vec<String>
-    /// }
-    ///
     /// let asap_token = "<your-token-here>";
     /// let whitelisted_issuers = vec!["list", "of", "whitelisted", "issuers"];
     ///
-    /// match validator.decode::<Claims<ExtraClaims>>(asap_token, &whitelisted_issuers) {
+    /// match validator.decode(asap_token, &whitelisted_issuers) {
     ///     Ok(token_data) => {
     ///         // Token is a valid ASAP token and is authorised.
-    ///         println!("claims {:?}", token_data.claims);
-    ///         println!("header {:?}", token_data.header);
+    ///         println!("header: {:?}", token_data.header);
+    ///         println!("claims: {:?}", token_data.claims);
+    ///         println!("extra_claims: {:?}", token_data.claims.extra_claims);
     ///     },
     ///     // Errors may include:
     ///     //  - invalid token or signature
@@ -493,10 +473,7 @@ impl Validator {
     ///     Err(e) => eprintln!("{:?}", e)
     /// }
     /// ```
-    pub fn decode<T>(&mut self, token: &str, whitelisted_issuers: &[&str]) -> Result<TokenData<T>>
-    where
-        T: DeserializeOwned + Serialize,
-    {
+    pub fn decode(&mut self, token: &str, whitelisted_issuers: &[&str]) -> Result<TokenData<Claims>> {
         // First, decode the header.
         let header = jwt::decode_header(token).sync()?;
 
@@ -510,7 +487,7 @@ impl Validator {
         let public_key = self.get_public_key(&kid)?;
 
         // Decode the token (this also validates its signature).
-        let data = jwt::decode::<T>(token, &public_key, &self.jwt_validator).sync()?;
+        let data = jwt::decode::<Claims>(token, &public_key, &self.jwt_validator).sync()?;
 
         // Ensure the token is valid (according to the ASAP specification).
         //
@@ -544,11 +521,8 @@ impl Validator {
     /// token. **Do not use this** unless you know what you are doing.
     ///
     /// !!! WARNING !!!
-    pub fn dangerous_unsafe_decode<T>(&mut self, token: &str) -> Result<TokenData<T>>
-    where
-        T: DeserializeOwned,
-    {
-        Ok(jwt::dangerous_unsafe_decode::<T>(token).sync()?)
+    pub fn dangerous_unsafe_decode(&mut self, token: &str) -> Result<TokenData<Claims>> {
+        Ok(jwt::dangerous_unsafe_decode::<Claims>(token).sync()?)
     }
 
     // Validates the JWT token as per the ASAP specification.

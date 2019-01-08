@@ -1,42 +1,42 @@
 use chrono::Utc;
-use serde::ser::Serialize;
+use serde::{Serializer, Deserialize, Deserializer};
+use serde::ser::SerializeMap;
+use serde_json::Value;
+use std::collections::HashMap;
 
 use util::generate_jti;
 
 // Default token lifespan (one hour).
 pub const DEFAULT_TOKEN_LIFESPAN: i64 = 60 * 60;
 
-/// A helper struct that can be used to ease generating and validating tokens
-/// with no extra claims.
+/// Claims required by ASAP. Cannot be overriden by the `extra_claims` field.
+pub const REQUIRED_CLAIMS: [&'static str; 5] = ["aud", "iss", "jti", "iat", "exp"];
+
+/// This type exists to ease adding in any extra claims to your ASAP token.
+/// It is a HashMap where the keys correspond to top-level keys in the serialised token.
+/// Note that overriding the required ASAP claims will have no effect.
 ///
 /// ```rust
-/// # extern crate asap;
-/// # extern crate serde;
-/// # extern crate chrono;
-/// # #[macro_use] extern crate serde_derive;
-/// #
-/// # use asap::claims::{DefaultClaims, Aud};
-/// # use asap::generator::Generator;
-/// # use asap::validator::Validator;
-/// #
+/// extern crate asap;
+/// extern crate serde;
+/// #[macro_use] extern crate serde_json;
+///
+/// use asap::claims::Aud;
+/// use asap::generator::Generator;
+/// use std::collections::HashMap;
+///
+/// let mut extra_claims = HashMap::new();
+/// extra_claims.insert("myCustomClaim".to_string(), json!("foobar"));
+/// extra_claims.insert("anotherClaim".to_string(), json!(1234));
+///
 /// # let aud = Aud::One("service02".to_string());
 /// # let iss = "service01".to_string();
 /// # let kid = "service01/my-key-id".to_string();
 /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
 /// # let mut generator = Generator::new(iss, kid, private_key);
-/// # let keyserver = "http://my-keyserver/".to_string();
-/// # let mut validator = Validator::builder(keyserver, "service02".to_string())
-/// #     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
-/// #     .build();
-/// #
-/// // Since the compiler needs type information, you can use `DefaultClaims` to
-/// // make these operations easier.
-/// let token = generator.token::<DefaultClaims>(aud, None).unwrap();
-/// let token_data = validator.decode::<DefaultClaims>(&token, &vec!["service01"]);
+/// let token = generator.token(aud, Some(extra_claims)).unwrap();
 /// ```
-#[derive(Debug, Serialize, Deserialize)]
-pub struct NoClaims;
-pub type DefaultClaims = Claims<NoClaims>;
+pub type ExtraClaims = HashMap<String, Value>;
 
 /// Since the `aud` claim may be either a `String` or `Vec<String>`, use this
 /// struct to ensure that the value is serialised and deserialised correctly.
@@ -61,7 +61,7 @@ impl Aud {
 
 /// A claims struct that contains the required ASAP fields.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Claims<T> {
+pub struct Claims {
     /// SPEC: A value that identifies the resource server.
     pub aud: Aud,
     /// SPEC: The service identifier of the client.
@@ -84,10 +84,32 @@ pub struct Claims<T> {
     /// Extra claims may be added to the token. These values will be serialised
     /// into the root of the token. If `None` is passed then no extra claims
     /// will be added to the token.
-    ///
-    /// WARNING: take care **not to overwrite any of the above required claims**.
-    #[serde(flatten)]
-    pub extra_claims: Option<T>,
+    #[serde(flatten, deserialize_with = "de_extra_claims", serialize_with = "ser_extra_claims")]
+    pub extra_claims: Option<ExtraClaims>,
+}
+
+fn de_extra_claims<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<ExtraClaims>, D::Error> {
+    let extra_claims = ExtraClaims::deserialize(deserializer)?;
+    if extra_claims.len() > 0 {
+        Ok(Some(extra_claims))
+    } else {
+        Ok(None)
+    }
+}
+
+fn ser_extra_claims<S: Serializer>(extra_claims: &Option<ExtraClaims>, s: S) -> Result<S::Ok, S::Error> {
+    if let Some(claims) = extra_claims {
+        let mut map = s.serialize_map(Some(claims.len()))?;
+        for (k, v) in claims {
+            if !REQUIRED_CLAIMS.contains(&k.as_str()) {
+                map.serialize_entry(k, v)?;
+            }
+        }
+
+        map.end()
+    } else {
+        s.serialize_none()
+    }
 }
 
 /// A nice helper that is used when creating the `Claims` struct for token
@@ -114,7 +136,7 @@ impl ClaimsBuilder {
 
     /// Creates a `Claims` struct. This method may be called multiple times to
     /// continue creating different `Claims` structs with the same configuration.
-    pub(crate) fn build<T: Serialize>(&mut self, aud: Aud, extra_claims: Option<T>) -> Claims<T> {
+    pub(crate) fn build(&mut self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Claims {
         let iss = self.iss.clone();
         let jti = generate_jti();
 
