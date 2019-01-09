@@ -69,9 +69,11 @@
 //! let token = generator.token(aud, Some(extra_claims)).unwrap();
 //! ```
 
-use claims::{Aud, ClaimsBuilder, ExtraClaims};
+use claims::{Aud, Claims, ClaimsBuilder, ExtraClaims};
 use jwt;
+use lru_time_cache::LruCache;
 use std::env;
+use std::time::Duration;
 
 use errors::{Result, ResultExt};
 use util::convert_pem_to_der;
@@ -109,6 +111,7 @@ pub struct Generator {
     header: jwt::Header,
     private_key: Vec<u8>,
     claims_builder: ClaimsBuilder,
+    cache: Option<LruCache<String, String>>
 }
 
 impl Generator {
@@ -126,7 +129,7 @@ impl Generator {
     /// None of the substrings can be `.` or `..`. As a further restriction, the
     /// key identifier must match the following Java regular expression: `^[\w.\-\+/]*$`.
     ///
-    /// NOTE: For the sake of simplicity, at this moment this library does not
+    /// NOTE: For the sake of simplicity, at the moment this library does not
     /// ensure that the `kid` matches the regular expression `^[\w.\-\+/]*$`.
     ///
     /// ## Private Key
@@ -151,7 +154,34 @@ impl Generator {
             header,
             private_key,
             claims_builder,
+            cache: None
         }
+    }
+
+    /// Calling this method will enable token caching.
+    /// **Caution:** caching generated tokens provides a significant performance
+    /// improvement, at the cost of re-using ASAP tokens.
+    ///
+    /// **Do not use this if your server requires unique `jti` claims**.
+    ///
+    /// This is intended for use with a server that does not validate `jti`
+    /// claims (since they're an optional part of the ASAP spec).
+    /// If your server is using `rust-asap` for validation then ensure that
+    /// it is not set to validate the `jti` claim.
+    ///
+    /// `max_count`: the maximum amount of tokens cached.
+    /// `ttl`: how long tokens should be cached before expiring.
+    ///
+    /// Calling `Generator::enable_token_caching` multiple times will drop any
+    /// previous caches stored.
+    pub fn enable_token_caching(&mut self, max_count: usize, ttl: Duration) {
+        let cache = LruCache::<String, String>::with_expiry_duration_and_capacity(ttl, max_count);
+        self.cache = Some(cache);
+    }
+
+    /// Disables token caching and returns the token cache (if any).
+    pub fn disable_token_caching(&mut self) -> Option<LruCache<String, String>> {
+        self.cache.take()
     }
 
     /// Sets the max lifespan (in seconds) of the tokens created by this generator.
@@ -260,8 +290,23 @@ impl Generator {
     pub fn token(&mut self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Result<String> {
         let claims = self.claims_builder.build(aud, extra_claims);
 
+        if let Some(ref mut cache) = self.cache {
+            let cache_key = claims.cache_key();
+            if let Some(cached_token) = cache.get(&cache_key) {
+                return Ok(cached_token.to_string())
+            }
+
+            let token = Generator::generate_token(&self.header, &claims, &self.private_key)?;
+            cache.insert(claims.cache_key().to_string(), token.clone());
+            return Ok(token)
+        }
+
         // Encode it and sign it with the private key.
-        let token = jwt::encode(&self.header, &claims, &self.private_key).sync()?;
+        Generator::generate_token(&self.header, &claims, &self.private_key)
+    }
+
+    fn generate_token(header: &jwt::Header, claims: &Claims, private_key: &Vec<u8>) -> Result<String> {
+        let token = jwt::encode(&header, &claims, &private_key).sync()?;
         Ok(token)
     }
 
@@ -296,5 +341,35 @@ impl Generator {
         extra_claims: Option<ExtraClaims>,
     ) -> Result<String> {
         Ok(format!("Bearer {}", self.token(aud, extra_claims)?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::claims::Aud;
+    use super::*;
+
+    #[test]
+    fn it_does_not_cache_more_tokens_than_max_count() {
+        let iss = "service01";
+        let kid = "service01/1530402390-public.der";
+        let private_key = include_bytes!("../support/keys/service01/1530402390-private.der");
+
+        let mut generator = Generator::new(iss.to_string(), kid.to_string(), private_key.to_vec());
+
+        // Caches all 3 tokens.
+        generator.enable_token_caching(10, ::std::time::Duration::from_millis(1000));
+        let _token_1 = generator.token(Aud::One(iss.to_string()), None).unwrap();
+        let _token_2 = generator.token(Aud::One("foo".to_string()), None).unwrap();
+        let _token_3 = generator.token(Aud::Many(vec![iss.to_string(), "foo".to_string()]), None).unwrap();
+        assert_eq!(generator.cache.as_ref().unwrap().len(), 3);
+
+        // Only caches 2/3 tokens.
+        generator.enable_token_caching(2, ::std::time::Duration::from_millis(1000));
+        let _token_1 = generator.token(Aud::One(iss.to_string()), None).unwrap();
+        let _token_2 = generator.token(Aud::One("foo".to_string()), None).unwrap();
+        let _token_3 = generator.token(Aud::Many(vec![iss.to_string(), "foo".to_string()]), None).unwrap();
+        assert_eq!(generator.cache.unwrap().len(), 2);
     }
 }

@@ -37,6 +37,13 @@ fn speed_of_generating_tokens(b: &mut Bencher) {
     b.iter(|| generator.token(default_aud(), None).unwrap());
 }
 
+fn speed_of_generating_tokens_with_caching_enabled(b: &mut Bencher) {
+    let mut generator = default_generator();
+    generator.enable_token_caching(10, ::std::time::Duration::from_millis(1000));
+
+    b.iter(|| generator.token(default_aud(), None).unwrap());
+}
+
 fn speed_of_generating_tokens_with_extra_claims(b: &mut Bencher) {
     let mut extra_claims = HashMap::new();
     extra_claims.insert("foo".to_string(), json!("foo"));
@@ -44,6 +51,18 @@ fn speed_of_generating_tokens_with_extra_claims(b: &mut Bencher) {
     extra_claims.insert("baz".to_string(), json!(["baz", "bop"]));
 
     let mut generator = default_generator();
+    b.iter(|| generator.token(default_aud(), Some(extra_claims.clone())).unwrap());
+}
+
+fn speed_of_generating_tokens_with_extra_claims_with_caching_enabled(b: &mut Bencher) {
+    let mut extra_claims = HashMap::new();
+    extra_claims.insert("foo".to_string(), json!("foo"));
+    extra_claims.insert("bar".to_string(), json!(1234));
+    extra_claims.insert("baz".to_string(), json!(["baz", "bop"]));
+
+    let mut generator = default_generator();
+    generator.enable_token_caching(10, ::std::time::Duration::from_millis(1000));
+
     b.iter(|| generator.token(default_aud(), Some(extra_claims.clone())).unwrap());
 }
 
@@ -99,7 +118,9 @@ fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
 
 benchmark_group!(generate,
     speed_of_generating_tokens,
-    speed_of_generating_tokens_with_extra_claims
+    speed_of_generating_tokens_with_caching_enabled,
+    speed_of_generating_tokens_with_extra_claims,
+    speed_of_generating_tokens_with_extra_claims_with_caching_enabled
 );
 benchmark_group!(validate,
     speed_of_validating_tokens,

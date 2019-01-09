@@ -112,6 +112,18 @@ fn ser_extra_claims<S: Serializer>(extra_claims: &Option<ExtraClaims>, s: S) -> 
     }
 }
 
+impl Claims {
+    pub fn cache_key(&self) -> String {
+        serde_json::to_string(&json!({
+            "aud": json!(self.aud),
+            "iss": json!(self.iss),
+            "iat": json!(self.iat),
+            "exp": json!(self.exp),
+            "extra_claims": json!(self.extra_claims)
+        })).unwrap()
+    }
+}
+
 /// A nice helper that is used when creating the `Claims` struct for token
 /// generation.
 pub(crate) struct ClaimsBuilder {
