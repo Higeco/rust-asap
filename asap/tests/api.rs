@@ -504,3 +504,63 @@ fn it_does_not_override_required_claims() {
     assert!(token_data.claims.iat > now - 2 && token_data.claims.iat < now + 2);
     assert_eq!(token_data.claims.exp - token_data.claims.iat, DEFAULT_TOKEN_LIFESPAN);
 }
+
+#[test]
+fn it_caches_tokens_when_enabled() {
+    let mut generator = default_generator();
+    generator.enable_token_caching(10, ::std::time::Duration::from_millis(1000));
+
+    let token_1 = generator.token(default_aud(), None).unwrap();
+    let token_2 = generator.token(default_aud(), None).unwrap();
+    assert_eq!(token_1, token_2);
+}
+
+#[test]
+fn it_caches_tokens_with_extra_claims_when_enabled() {
+    let mut generator = default_generator();
+    generator.enable_token_caching(10, ::std::time::Duration::from_millis(1000));
+
+    let mut extra_claims = HashMap::new();
+    extra_claims.insert("foo".to_string(), json!("foo"));
+    extra_claims.insert("bar".to_string(), json!(1234));
+    extra_claims.insert("baz".to_string(), json!(["baz", "bop"]));
+
+    let token_1 = generator.token(default_aud(), Some(extra_claims.clone())).unwrap();
+    let token_2 = generator.token(default_aud(), Some(extra_claims.clone())).unwrap();
+    assert_eq!(token_1, token_2);
+}
+
+#[test]
+fn it_does_not_return_expired_cached_tokens() {
+    let cache_duration = ::std::time::Duration::from_millis(100);
+
+    let mut generator = default_generator();
+    generator.enable_token_caching(10, cache_duration);
+
+    let token_1 = generator.token(default_aud(), None).unwrap();
+    ::std::thread::sleep(cache_duration);
+    let token_2 = generator.token(default_aud(), None).unwrap();
+
+    assert!(token_1 != token_2);
+}
+
+#[test]
+fn it_regenerates_cached_tokens_when_they_are_different() {
+    let mut generator = default_generator();
+    generator.enable_token_caching(10, ::std::time::Duration::from_millis(1000));
+
+    // Check different audience.
+    let token_1 = generator.token(Aud::One(ISS_01.to_string()), None).unwrap();
+    let token_2 = generator.token(Aud::One(ISS_02.to_string()), None).unwrap();
+    assert!(token_1 != token_2);
+
+    // Check different extra claims.
+    let mut extra_claims_1 = HashMap::new();
+    extra_claims_1.insert("foo".to_string(), json!("foo"));
+    let mut extra_claims_2 = HashMap::new();
+    extra_claims_2.insert("bar".to_string(), json!("bar"));
+
+    let token_1 = generator.token(default_aud(), Some(extra_claims_1)).unwrap();
+    let token_2 = generator.token(default_aud(), Some(extra_claims_2)).unwrap();
+    assert!(token_1 != token_2);
+}
