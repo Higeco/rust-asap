@@ -297,7 +297,7 @@ impl Generator {
             }
 
             let token = Generator::generate_token(&self.header, &claims, &self.private_key)?;
-            cache.insert(claims.cache_key().to_string(), token.clone());
+            cache.insert(claims.cache_key(), token.clone());
             return Ok(token)
         }
 
