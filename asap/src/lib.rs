@@ -26,9 +26,9 @@
 //! ```rust
 //! # extern crate asap;
 //! # extern crate serde;
-//! # #[macro_use] extern crate serde_derive;
+//! # #[macro_use] extern crate serde_json;
 //! #
-//! use asap::claims::{DefaultClaims, Aud};
+//! use asap::claims::Aud;
 //! use asap::generator::Generator;
 //!
 //! // The identifier of the service that issues the token (`iss`).
@@ -43,7 +43,7 @@
 //!
 //! // Generate tokens, etc...
 //! # let aud = Aud::One("aud".to_string());
-//! # let extra_claims: Option<DefaultClaims> = None;
+//! # let extra_claims = None;
 //! let token = generator.token(aud, extra_claims).unwrap();
 //! ```
 //!
@@ -52,10 +52,10 @@
 //! ```rust
 //! # extern crate asap;
 //! # extern crate serde;
-//! # #[macro_use] extern crate serde_derive;
+//! # #[macro_use] extern crate serde_json;
 //! #
 //! # use serde::de::DeserializeOwned;
-//! use asap::claims::{Claims, DefaultClaims};
+//! use asap::claims::Claims;
 //! use asap::validator::Validator;
 //!
 //! let asap_token = "<your-asap-token>";
@@ -73,7 +73,7 @@
 //!
 //! // A list of issuers that are allowed to access this server/resource.
 //! let whitelisted_issuers = vec!["list", "of", "whitelisted", "issuers"];
-//! match validator.decode::<DefaultClaims>(asap_token, &whitelisted_issuers) {
+//! match validator.decode(asap_token, &whitelisted_issuers) {
 //!     Ok(token_data) => {
 //!         // Here you have a successfully verified and accepted access token!
 //!         //

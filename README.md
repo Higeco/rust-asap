@@ -38,10 +38,10 @@ To install, add the following lines to your `Cargo.toml`:
 
 ```toml
 asap = "<latest-version-from-crates.io>"
-# These crates are required for defining your own `Claims` struct which needs
-# to be serialised into the token (and deserialised out of it).
-serde_derive = "1"
+# These crates are required for defining any extra claims that will be
+# serialised into the token (and deserialised out of it).
 serde = "1"
+serde_json = "1"
 ```
 
 ### Documentation

@@ -6,11 +6,9 @@ pipelines:
         - step:
             name: Build and test
             script:
-              - cd ./asap
               - cargo build
               - cargo test
         - step:
             name: Run benchmarks
             script:
-              - cd ./asap
               - cargo bench

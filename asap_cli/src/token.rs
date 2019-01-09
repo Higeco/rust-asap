@@ -1,5 +1,4 @@
 use asap::generator::Generator;
-use serde_json::Value;
 
 use config::Config;
 use errors::Result;
@@ -28,7 +27,7 @@ pub fn create_token(config: &Config) -> String {
 
     let aud = config.audience.clone();
     let extra_claims = config.extra_claims.clone();
-    if let Ok(token) = generator.token::<Value>(aud, extra_claims) {
+    if let Ok(token) = generator.token(aud, extra_claims) {
         token
     } else {
         panic!("failed to generate token\n{:?}", config)
