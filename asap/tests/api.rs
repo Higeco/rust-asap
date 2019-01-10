@@ -33,6 +33,17 @@ fn get_validator_builder(keyserver_url: &str) -> ValidatorBuilder {
     Validator::builder(String::from(keyserver_url), resource_server_audience)
 }
 
+fn mock_claims() -> Claims {
+    Claims {
+        aud: Aud::One(ISS_01.to_string()),
+        iss: ISS_01.to_string(),
+        jti: "some-random-jti".to_string(),
+        iat: Utc::now().timestamp(),
+        exp: Utc::now().timestamp() + 60,
+        extra_claims: None
+    }
+}
+
 fn mock_extra_claims() -> Option<ExtraClaims> {
     let mut extra_claims = HashMap::new();
     extra_claims.insert("object".to_string(), json!({ "one": ["two", "three"] }));
@@ -169,10 +180,7 @@ fn validates_nbf_is_after_current_time() {
 
         let token = generator.token(default_aud(), Some(extra_claims)).unwrap();
         match validator.decode(&token, &vec![ISS_01]) {
-            Ok(x) => {
-                println!("{:?}", x);
-                panic!("Validation should fail.")
-            },
+            Ok(_) => panic!("Validation should fail."),
             Err(e) => assert!(format!("{}", e).starts_with("Immature jwt signature"))
         }
     }
@@ -563,4 +571,60 @@ fn it_regenerates_cached_tokens_when_they_are_different() {
     let token_1 = generator.token(default_aud(), Some(extra_claims_1)).unwrap();
     let token_2 = generator.token(default_aud(), Some(extra_claims_2)).unwrap();
     assert!(token_1 != token_2);
+}
+
+#[test]
+fn it_rejects_unsigned_tokens() {
+    fn split_two(token: String) -> (String, String) {
+        let mut i = token.rsplitn(2, '.');
+        match (i.next(), i.next(), i.next()) {
+            (Some(a), Some(b), None) => (a.to_string(), b.to_string()),
+            _ => panic!("Unexpected split: {:?}", i)
+        }
+    }
+
+    let mut header = jwt::Header::new(jwt::Algorithm::RS256);
+    header.kid = Some(KID_01.to_string());
+
+    // Remove signature from token.
+    let token = jwt::encode(&header, &mock_claims(), &PRIVATE_KEY_01.to_vec()).unwrap();
+    let (_signature, signing_input) = split_two(token);
+
+    // Try to validate without signature.
+    let keyserver = Keyserver::start();
+    let mut validator = get_validator_builder(keyserver.url()).build();
+    match validator.decode(&signing_input, &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!("Invalid token", format!("{}", e))
+    }
+}
+
+#[test]
+fn it_rejects_tokens_signed_with_unsupported_alg() {
+    let unsupported_algs = vec![
+        jwt::Algorithm::HS256,
+        jwt::Algorithm::HS384,
+        jwt::Algorithm::HS512,
+        jwt::Algorithm::RS384,
+        jwt::Algorithm::RS512
+    ];
+
+    for alg in unsupported_algs {
+        let mut header = jwt::Header::new(alg);
+        header.kid = Some(KID_01.to_string());
+
+        let token = jwt::encode(&header, &mock_claims(), &PRIVATE_KEY_01.to_vec()).unwrap();
+
+        let keyserver = Keyserver::start();
+        let mut validator = get_validator_builder(keyserver.url()).build();
+        match validator.decode(&token, &vec![ISS_01]) {
+            Ok(_) => panic!("Validation should fail."),
+            Err(e) => {
+                let err_msg = format!("{}", e);
+                // HSXXX signatures fail to be parsed -> "Invalid signature"
+                // RSXXX signatures fail to decoded   -> "Invalid Algorithm"
+                assert!(err_msg == "Invalid Algorithm" || err_msg == "Invalid signature")
+            }
+        }
+    }
 }
