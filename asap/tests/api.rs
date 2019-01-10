@@ -597,6 +597,12 @@ fn it_rejects_unsigned_tokens() {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!("Invalid token", format!("{}", e))
     }
+
+    // Try to validate with an empty signature.
+    match validator.decode(&(signing_input.to_string() + "."), &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!("Invalid signature", format!("{}", e))
+    }
 }
 
 #[test]
@@ -621,8 +627,8 @@ fn it_rejects_tokens_signed_with_unsupported_alg() {
             Ok(_) => panic!("Validation should fail."),
             Err(e) => {
                 let err_msg = format!("{}", e);
-                // HSXXX signatures fail to be parsed -> "Invalid signature"
-                // RSXXX signatures fail to decoded   -> "Invalid Algorithm"
+                // HSXXX signatures fail to be parsed  -> "Invalid signature"
+                // RSXXX signatures fail to be decoded -> "Invalid Algorithm"
                 assert!(err_msg == "Invalid Algorithm" || err_msg == "Invalid signature")
             }
         }
