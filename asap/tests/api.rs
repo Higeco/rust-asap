@@ -1,4 +1,5 @@
 extern crate asap;
+extern crate base64;
 extern crate chrono;
 extern crate jsonwebtoken as jwt;
 extern crate asap_deps_keyserver as keyserver;
@@ -31,6 +32,17 @@ const KID_02: &'static str = "service02/1530402393-public.der";
 fn get_validator_builder(keyserver_url: &str) -> ValidatorBuilder {
     let resource_server_audience = String::from(ISS_01);
     Validator::builder(String::from(keyserver_url), resource_server_audience)
+}
+
+fn mock_claims() -> Claims {
+    Claims {
+        aud: Aud::One(ISS_01.to_string()),
+        iss: ISS_01.to_string(),
+        jti: "some-random-jti".to_string(),
+        iat: Utc::now().timestamp(),
+        exp: Utc::now().timestamp() + 60,
+        extra_claims: None
+    }
 }
 
 fn mock_extra_claims() -> Option<ExtraClaims> {
@@ -169,10 +181,7 @@ fn validates_nbf_is_after_current_time() {
 
         let token = generator.token(default_aud(), Some(extra_claims)).unwrap();
         match validator.decode(&token, &vec![ISS_01]) {
-            Ok(x) => {
-                println!("{:?}", x);
-                panic!("Validation should fail.")
-            },
+            Ok(_) => panic!("Validation should fail."),
             Err(e) => assert!(format!("{}", e).starts_with("Immature jwt signature"))
         }
     }
@@ -563,4 +572,93 @@ fn it_regenerates_cached_tokens_when_they_are_different() {
     let token_1 = generator.token(default_aud(), Some(extra_claims_1)).unwrap();
     let token_2 = generator.token(default_aud(), Some(extra_claims_2)).unwrap();
     assert!(token_1 != token_2);
+}
+
+#[test]
+fn it_rejects_unsigned_tokens() {
+    // Manually create a JWT without a signature nor an "alg" in the header.
+    let header = base64::encode(&serde_json::to_string(&json!({
+        "typ": "JWT",
+        "kid": KID_01.to_string()
+    })).unwrap());
+    let body = base64::encode(&serde_json::to_string(&mock_claims()).unwrap());
+    let token = header + "." + &body;
+
+    let keyserver = Keyserver::start();
+    let mut validator = get_validator_builder(keyserver.url()).build();
+
+    // Validate without signature.
+    match validator.decode(&token, &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!("Invalid token", format!("{}", e))
+    }
+
+    // Validate with empty signature.
+    match validator.decode(&(token + "."), &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!("missing field `alg` at line 1 column 53", format!("{}", e))
+    }
+}
+
+#[test]
+fn it_rejects_tokens_with_missing_signatures() {
+    fn split_two(token: String) -> (String, String) {
+        let mut i = token.rsplitn(2, '.');
+        match (i.next(), i.next(), i.next()) {
+            (Some(a), Some(b), None) => (a.to_string(), b.to_string()),
+            _ => panic!("Unexpected split: {:?}", i)
+        }
+    }
+
+    let mut header = jwt::Header::new(jwt::Algorithm::RS256);
+    header.kid = Some(KID_01.to_string());
+
+    // Remove signature from token.
+    let token = jwt::encode(&header, &mock_claims(), &PRIVATE_KEY_01.to_vec()).unwrap();
+    let (_signature, signing_input) = split_two(token);
+
+    let keyserver = Keyserver::start();
+    let mut validator = get_validator_builder(keyserver.url()).build();
+
+    // Try to validate without signature.
+    match validator.decode(&signing_input, &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!("Invalid token", format!("{}", e))
+    }
+
+    // Try to validate with an empty signature.
+    match validator.decode(&(signing_input.to_string() + "."), &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!("Invalid signature", format!("{}", e))
+    }
+}
+
+#[test]
+fn it_rejects_tokens_signed_with_unsupported_alg() {
+    let unsupported_algs = vec![
+        jwt::Algorithm::HS256,
+        jwt::Algorithm::HS384,
+        jwt::Algorithm::HS512,
+        jwt::Algorithm::RS384,
+        jwt::Algorithm::RS512
+    ];
+
+    for alg in unsupported_algs {
+        let mut header = jwt::Header::new(alg);
+        header.kid = Some(KID_01.to_string());
+
+        let token = jwt::encode(&header, &mock_claims(), &PRIVATE_KEY_01.to_vec()).unwrap();
+
+        let keyserver = Keyserver::start();
+        let mut validator = get_validator_builder(keyserver.url()).build();
+        match validator.decode(&token, &vec![ISS_01]) {
+            Ok(_) => panic!("Validation should fail."),
+            Err(e) => {
+                let err_msg = format!("{}", e);
+                // HSXXX signatures fail to be parsed  -> "Invalid signature"
+                // RSXXX signatures fail to be decoded -> "Invalid Algorithm"
+                assert!(err_msg == "Invalid Algorithm" || err_msg == "Invalid signature")
+            }
+        }
+    }
 }
