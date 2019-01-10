@@ -1,4 +1,5 @@
 extern crate asap;
+extern crate base64;
 extern crate chrono;
 extern crate jsonwebtoken as jwt;
 extern crate asap_deps_keyserver as keyserver;
@@ -575,6 +576,32 @@ fn it_regenerates_cached_tokens_when_they_are_different() {
 
 #[test]
 fn it_rejects_unsigned_tokens() {
+    // Manually create a JWT without a signature nor an "alg" in the header.
+    let header = base64::encode(&serde_json::to_string(&json!({
+        "typ": "JWT",
+        "kid": KID_01.to_string()
+    })).unwrap());
+    let body = base64::encode(&serde_json::to_string(&mock_claims()).unwrap());
+    let token = header + "." + &body;
+
+    let keyserver = Keyserver::start();
+    let mut validator = get_validator_builder(keyserver.url()).build();
+
+    // Validate without signature.
+    match validator.decode(&token, &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!("Invalid token", format!("{}", e))
+    }
+
+    // Validate with empty signature.
+    match validator.decode(&(token + "."), &vec![ISS_01]) {
+        Ok(_) => panic!("Validation should fail."),
+        Err(e) => assert_eq!("missing field `alg` at line 1 column 53", format!("{}", e))
+    }
+}
+
+#[test]
+fn it_rejects_tokens_with_missing_signatures() {
     fn split_two(token: String) -> (String, String) {
         let mut i = token.rsplitn(2, '.');
         match (i.next(), i.next(), i.next()) {
@@ -590,9 +617,10 @@ fn it_rejects_unsigned_tokens() {
     let token = jwt::encode(&header, &mock_claims(), &PRIVATE_KEY_01.to_vec()).unwrap();
     let (_signature, signing_input) = split_two(token);
 
-    // Try to validate without signature.
     let keyserver = Keyserver::start();
     let mut validator = get_validator_builder(keyserver.url()).build();
+
+    // Try to validate without signature.
     match validator.decode(&signing_input, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!("Invalid token", format!("{}", e))
