@@ -401,7 +401,7 @@ fn it_fails_with_wrong_public_key() {
     let token = generator.token(default_aud(), None).unwrap();
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Invalid signature")
+        Err(e) => assert_eq!(format!("{}", e), "invalid signature")
     }
 }
 
@@ -590,13 +590,13 @@ fn it_rejects_unsigned_tokens() {
     // Validate without signature.
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("Invalid token", format!("{}", e))
+        Err(e) => assert_eq!("invalid token", format!("{}", e))
     }
 
     // Validate with empty signature.
     match validator.decode(&(token + "."), &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("missing field `alg` at line 1 column 53", format!("{}", e))
+        Err(e) => assert_eq!("JSON error: missing field `alg` at line 1 column 53", format!("{}", e))
     }
 }
 
@@ -623,13 +623,13 @@ fn it_rejects_tokens_with_missing_signatures() {
     // Try to validate without signature.
     match validator.decode(&signing_input, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("Invalid token", format!("{}", e))
+        Err(e) => assert_eq!("invalid token", format!("{}", e))
     }
 
     // Try to validate with an empty signature.
     match validator.decode(&(signing_input.to_string() + "."), &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("Invalid signature", format!("{}", e))
+        Err(e) => assert_eq!("invalid signature", format!("{}", e))
     }
 }
 
@@ -655,9 +655,20 @@ fn it_rejects_tokens_signed_with_unsupported_alg() {
             Ok(_) => panic!("Validation should fail."),
             Err(e) => {
                 let err_msg = format!("{}", e);
-                // HSXXX signatures fail to be parsed  -> "Invalid signature"
-                // RSXXX signatures fail to be decoded -> "Invalid Algorithm"
-                assert!(err_msg == "Invalid Algorithm" || err_msg == "Invalid signature")
+                match alg {
+                    // HSXXX signatures fail to be parsed  -> "Invalid signature"
+                    jwt::Algorithm::HS256 |
+                    jwt::Algorithm::HS384 |
+                    jwt::Algorithm::HS512 => {
+                        assert_eq!(err_msg, "invalid signature")
+                    },
+                    // RSXXX signatures fail to be decoded -> "Invalid Algorithm"
+                    jwt::Algorithm::RS384 |
+                    jwt::Algorithm::RS512 => {
+                        assert_eq!(err_msg, "algorithms don't match")
+                    },
+                    _ => unreachable!()
+                }
             }
         }
     }

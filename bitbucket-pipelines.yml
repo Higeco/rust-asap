@@ -3,12 +3,21 @@ image: rust:latest
 pipelines:
   default:
     - parallel:
-        - step:
-            name: Build and test
-            script:
-              - cargo build
-              - cargo test
-        - step:
-            name: Run benchmarks
-            script:
-              - cargo bench
+      - step:
+          name: Build and test
+          script:
+            - cargo build
+            - cargo test
+      - step:
+          name: Run benchmarks
+          script:
+            - cargo bench
+      - step:
+          name: Check coverage
+          script:
+            - apt-get update && apt-get install -y cmake && rm -rf /var/lib/apt/lists/*
+            - RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install -f cargo-tarpaulin
+            - cargo tarpaulin --out Html
+          artifacts:
+            - tarpaulin-report.html
+
