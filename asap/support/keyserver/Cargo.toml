@@ -1,6 +1,6 @@
 [package]
 name = "asap_deps_keyserver"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 authors = ["Callum Osmotherly <cosmotherly@atlassian.com>"]
 homepage = "https://bitbucket.org/atlassianlabs/rust-asap/"
@@ -10,4 +10,4 @@ description = "This is a dev-dependency of rust-asap."
 [dependencies]
 hyper = "0.12.5"
 tokio-threadpool = "0.1.5"
-reqwest = "0.8.6"
+reqwest = "0.9.11"
