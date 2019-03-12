@@ -58,10 +58,17 @@ asap help
 
 ## Development/Testing
 
-To run tests:
+This project is managed by `cargo`. It also includes a `justfile` to make some things easier - read that file to see which commands are run for common operations. For example:
 
-```
-cargo test
+```bash
+# Run all the tests:
+just test
+
+# Run the `asap` cli tool:
+just run --audience "server" curl "https://my.server.net"
+
+# Publish the updated crates:
+just publish
 ```
 
 Note that some tests need a keyserver to work. They start up the [mini
