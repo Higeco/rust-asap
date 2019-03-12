@@ -1,6 +1,8 @@
 # ASAP for Rust
 
-[![crates.io](https://img.shields.io/crates/v/asap.svg)](https://crates.io/crates/asap)
+Library: [![crates.io](https://img.shields.io/crates/v/asap.svg)](https://crates.io/crates/asap)
+CLI tool: [![crates.io](https://img.shields.io/crates/v/asap_cli.svg)](https://crates.io/crates/asap_cli)
+
 [![dependency status](https://deps.rs/repo/bitbucket/atlassianlabs/rust-asap/status.svg)](https://deps.rs/repo/bitbucket/atlassianlabs/rust-asap)
 [![build status](https://img.shields.io/bitbucket/pipelines/atlassianlabs/rust-asap.svg)](https://bitbucket.org/atlassianlabs/rust-asap/addon/pipelines/home#!/)
 
