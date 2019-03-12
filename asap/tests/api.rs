@@ -1,8 +1,8 @@
 extern crate asap;
+extern crate asap_deps_keyserver as keyserver;
 extern crate base64;
 extern crate chrono;
 extern crate jsonwebtoken as jwt;
-extern crate asap_deps_keyserver as keyserver;
 extern crate reqwest;
 extern crate serde;
 #[macro_use]
@@ -41,7 +41,7 @@ fn mock_claims() -> Claims {
         jti: "some-random-jti".to_string(),
         iat: Utc::now().timestamp(),
         exp: Utc::now().timestamp() + 60,
-        extra_claims: None
+        extra_claims: None,
     }
 }
 
@@ -65,16 +65,23 @@ fn default_generator() -> Generator {
     Generator::new(
         ISS_01.to_string(),
         KID_01.to_string(),
-        PRIVATE_KEY_01.to_vec()
+        PRIVATE_KEY_01.to_vec(),
     )
 }
 
-fn validate_claims(token_data: TokenData<Claims>, expected_aud: Aud, extra_claims: Option<ExtraClaims>) {
+fn validate_claims(
+    token_data: TokenData<Claims>,
+    expected_aud: Aud,
+    extra_claims: Option<ExtraClaims>,
+) {
     let now = Utc::now().timestamp();
     assert_eq!(token_data.claims.aud, expected_aud);
     assert_eq!(&token_data.claims.iss, ISS_01);
     assert_eq!(token_data.claims.jti.len(), 20);
-    assert_eq!(token_data.claims.exp - token_data.claims.iat, DEFAULT_TOKEN_LIFESPAN);
+    assert_eq!(
+        token_data.claims.exp - token_data.claims.iat,
+        DEFAULT_TOKEN_LIFESPAN
+    );
     assert!(token_data.claims.iat > now - 2 && token_data.claims.iat < now + 2);
     assert_eq!(token_data.claims.extra_claims, extra_claims);
 }
@@ -87,7 +94,10 @@ fn setup_env(keyserver: &Keyserver) {
     // Setup environment for the generator.
     env::set_var("ASAP_KEY_ID", KID_01);
     env::set_var("ASAP_ISSUER", ISS_01);
-    env::set_var("ASAP_PRIVATE_KEY", include_str!("../support/keys/service01/1530402390-private.pem"));
+    env::set_var(
+        "ASAP_PRIVATE_KEY",
+        include_str!("../support/keys/service01/1530402390-private.pem"),
+    );
 }
 
 fn teardown_env() {
@@ -155,7 +165,10 @@ fn instantiates_from_environment() {
     // Test that it uses the fallback keyserver
     {
         setup_env(&keyserver);
-        env::set_var("ASAP_KEYSERVER_URL", "http://not-a-real-server/".to_string());
+        env::set_var(
+            "ASAP_KEYSERVER_URL",
+            "http://not-a-real-server/".to_string(),
+        );
         let mut generator = Generator::from_env().unwrap();
         let mut validator = Validator::from_env().unwrap().build();
         let token = generator.token(default_aud(), mock_extra_claims()).unwrap();
@@ -173,7 +186,6 @@ fn validates_nbf_is_after_current_time() {
     let mut generator = default_generator();
     let mut validator = get_validator_builder(keyserver.url()).build();
 
-
     // Validation should fail since `nbf` is after current time.
     {
         let mut extra_claims = HashMap::new();
@@ -182,7 +194,7 @@ fn validates_nbf_is_after_current_time() {
         let token = generator.token(default_aud(), Some(extra_claims)).unwrap();
         match validator.decode(&token, &vec![ISS_01]) {
             Ok(_) => panic!("Validation should fail."),
-            Err(e) => assert!(format!("{}", e).starts_with("Immature jwt signature"))
+            Err(e) => assert!(format!("{}", e).starts_with("Immature jwt signature")),
         }
     }
 
@@ -209,7 +221,7 @@ fn validates_exp_is_before_current_time() {
     // Validation should fail since `exp` is before current time.
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert!(format!("{}", e).starts_with("Expired jwt signature"))
+        Err(e) => assert!(format!("{}", e).starts_with("Expired jwt signature")),
     }
 }
 
@@ -228,8 +240,11 @@ fn validates_if_max_lifespan_is_exceeded() {
     let token = generator.token(default_aud(), None).unwrap();
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Token contained a lifespan greater than the \
-            `max_lifespan` (hard limit of 3600 seconds)")
+        Err(e) => assert_eq!(
+            format!("{}", e),
+            "Token contained a lifespan greater than the \
+             `max_lifespan` (hard limit of 3600 seconds)"
+        ),
     }
 }
 
@@ -251,8 +266,11 @@ fn validates_if_custom_max_lifespan_is_exceeded() {
     let token = generator.token(default_aud(), None).unwrap();
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Token contained a lifespan greater than the \
-            `max_lifespan` (hard limit of 3600 seconds)")
+        Err(e) => assert_eq!(
+            format!("{}", e),
+            "Token contained a lifespan greater than the \
+             `max_lifespan` (hard limit of 3600 seconds)"
+        ),
     }
 }
 
@@ -271,8 +289,11 @@ fn validates_if_encounters_unrecognized_audience() {
     let token = generator.token(aud, None).unwrap();
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Resource server audience not found in `aud` claims of \
-            token [\"not-whitelisted\"]")
+        Err(e) => assert_eq!(
+            format!("{}", e),
+            "Resource server audience not found in `aud` claims of \
+             token [\"not-whitelisted\"]"
+        ),
     }
 }
 
@@ -292,8 +313,11 @@ fn works_with_aud_as_vec() {
     let token = generator.token(aud, None).unwrap();
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Resource server audience not found in `aud` claims of \
-            token [\"foo\", \"bar\"]")
+        Err(e) => assert_eq!(
+            format!("{}", e),
+            "Resource server audience not found in `aud` claims of \
+             token [\"foo\", \"bar\"]"
+        ),
     }
 }
 
@@ -311,8 +335,11 @@ fn works_with_aud_as_string() {
     let token = generator.token(default_aud(), None).unwrap();
     match validator.decode(&token, &vec!["foobar"]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Unknown or unauthorized subject \"service01\". The `sub` \
-            claim (or `iss`) must exist in `whitelisted_issuers` [\"foobar\"]")
+        Err(e) => assert_eq!(
+            format!("{}", e),
+            "Unknown or unauthorized subject \"service01\". The `sub` \
+             claim (or `iss`) must exist in `whitelisted_issuers` [\"foobar\"]"
+        ),
     }
 }
 
@@ -333,13 +360,18 @@ fn iss_is_assumed_if_sub_is_undefined() {
     let whitelisted_issuers = vec![ISS_02];
 
     // Validation should succeed with `sub` defined (`ISS_02`).
-    let _ = validator.decode(&token_with_sub, &whitelisted_issuers).unwrap();
+    let _ = validator
+        .decode(&token_with_sub, &whitelisted_issuers)
+        .unwrap();
 
     // Validation should fail without it (since `iss` is assumed).
     match validator.decode(&token_no_sub, &whitelisted_issuers) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "Unknown or unauthorized subject \"service01\". \
-            The `sub` claim (or `iss`) must exist in `whitelisted_issuers` [\"service02\"]")
+        Err(e) => assert_eq!(
+            format!("{}", e),
+            "Unknown or unauthorized subject \"service01\". \
+             The `sub` claim (or `iss`) must exist in `whitelisted_issuers` [\"service02\"]"
+        ),
     }
 }
 
@@ -355,13 +387,19 @@ fn validates_kid_is_owned_by_isser() {
     let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
 
     // This should fail since now `kid` does not start with `$iss/`.
-    let mut generator = Generator::new(ISS_02.to_string(), KID_01.to_string(), PRIVATE_KEY_01.to_vec());
+    let mut generator = Generator::new(
+        ISS_02.to_string(),
+        KID_01.to_string(),
+        PRIVATE_KEY_01.to_vec(),
+    );
     let token = generator.token(default_aud(), None).unwrap();
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "JWT header did not contain a valid `kid` claim. \
+        Err(e) => {
+            assert_eq!(format!("{}", e), "JWT header did not contain a valid `kid` claim. \
             As per ASAP spec, the `kid` claim must start with \"$iss/\" where $iss is the issuer \
             (kid: \"service01/1530402390-public.der\", iss: \"service02\")")
+        }
     }
 }
 
@@ -383,7 +421,7 @@ fn it_rejects_duplicate_jti_claims() {
     // Reusing the same token should fail (same `jti`).
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert!(format!("{}", e).starts_with("Duplicate `jti` encountered: "))
+        Err(e) => assert!(format!("{}", e).starts_with("Duplicate `jti` encountered: ")),
     }
 
     // A new token (different `jti`) should be successful.
@@ -395,20 +433,28 @@ fn it_rejects_duplicate_jti_claims() {
 fn it_fails_with_wrong_public_key() {
     let keyserver = Keyserver::start();
     // Give the wrong `kid` for the `private_key` used.
-    let mut generator = Generator::new(ISS_01.to_string(), KID_02.to_string(), PRIVATE_KEY_01.to_vec());
+    let mut generator = Generator::new(
+        ISS_01.to_string(),
+        KID_02.to_string(),
+        PRIVATE_KEY_01.to_vec(),
+    );
     let mut validator = get_validator_builder(keyserver.url()).build();
 
     let token = generator.token(default_aud(), None).unwrap();
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "invalid signature")
+        Err(e) => assert_eq!(format!("{}", e), "invalid signature"),
     }
 }
 
 #[test]
 fn it_fails_with_no_public_key() {
     let keyserver = Keyserver::start();
-    let mut generator = Generator::new(ISS_01.to_string(), "not-a-kid".to_string(), PRIVATE_KEY_01.to_vec());
+    let mut generator = Generator::new(
+        ISS_01.to_string(),
+        "not-a-kid".to_string(),
+        PRIVATE_KEY_01.to_vec(),
+    );
     let mut validator = get_validator_builder(keyserver.url()).build();
 
     let token = generator.token(default_aud(), None).unwrap();
@@ -487,7 +533,10 @@ fn it_allows_extra_claims() {
     let decoded_extra_claims = token_data.claims.extra_claims.unwrap();
     assert_eq!(decoded_extra_claims.get("foo").unwrap(), &json!("foo"));
     assert_eq!(decoded_extra_claims.get("bar").unwrap(), &json!(1234));
-    assert_eq!(decoded_extra_claims.get("baz").unwrap(), &json!(["baz", "bop"]));
+    assert_eq!(
+        decoded_extra_claims.get("baz").unwrap(),
+        &json!(["baz", "bop"])
+    );
 }
 
 #[test]
@@ -511,7 +560,10 @@ fn it_does_not_override_required_claims() {
     assert!(token_data.claims.jti != "jti");
     let now = Utc::now().timestamp();
     assert!(token_data.claims.iat > now - 2 && token_data.claims.iat < now + 2);
-    assert_eq!(token_data.claims.exp - token_data.claims.iat, DEFAULT_TOKEN_LIFESPAN);
+    assert_eq!(
+        token_data.claims.exp - token_data.claims.iat,
+        DEFAULT_TOKEN_LIFESPAN
+    );
 }
 
 #[test]
@@ -534,8 +586,12 @@ fn it_caches_tokens_with_extra_claims_when_enabled() {
     extra_claims.insert("bar".to_string(), json!(1234));
     extra_claims.insert("baz".to_string(), json!(["baz", "bop"]));
 
-    let token_1 = generator.token(default_aud(), Some(extra_claims.clone())).unwrap();
-    let token_2 = generator.token(default_aud(), Some(extra_claims.clone())).unwrap();
+    let token_1 = generator
+        .token(default_aud(), Some(extra_claims.clone()))
+        .unwrap();
+    let token_2 = generator
+        .token(default_aud(), Some(extra_claims.clone()))
+        .unwrap();
     assert_eq!(token_1, token_2);
 }
 
@@ -569,18 +625,25 @@ fn it_regenerates_cached_tokens_when_they_are_different() {
     let mut extra_claims_2 = HashMap::new();
     extra_claims_2.insert("bar".to_string(), json!("bar"));
 
-    let token_1 = generator.token(default_aud(), Some(extra_claims_1)).unwrap();
-    let token_2 = generator.token(default_aud(), Some(extra_claims_2)).unwrap();
+    let token_1 = generator
+        .token(default_aud(), Some(extra_claims_1))
+        .unwrap();
+    let token_2 = generator
+        .token(default_aud(), Some(extra_claims_2))
+        .unwrap();
     assert!(token_1 != token_2);
 }
 
 #[test]
 fn it_rejects_unsigned_tokens() {
     // Manually create a JWT without a signature nor an "alg" in the header.
-    let header = base64::encode(&serde_json::to_string(&json!({
-        "typ": "JWT",
-        "kid": KID_01.to_string()
-    })).unwrap());
+    let header = base64::encode(
+        &serde_json::to_string(&json!({
+            "typ": "JWT",
+            "kid": KID_01.to_string()
+        }))
+        .unwrap(),
+    );
     let body = base64::encode(&serde_json::to_string(&mock_claims()).unwrap());
     let token = header + "." + &body;
 
@@ -590,13 +653,16 @@ fn it_rejects_unsigned_tokens() {
     // Validate without signature.
     match validator.decode(&token, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("invalid token", format!("{}", e))
+        Err(e) => assert_eq!("invalid token", format!("{}", e)),
     }
 
     // Validate with empty signature.
     match validator.decode(&(token + "."), &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("JSON error: missing field `alg` at line 1 column 53", format!("{}", e))
+        Err(e) => assert_eq!(
+            "JSON error: missing field `alg` at line 1 column 53",
+            format!("{}", e)
+        ),
     }
 }
 
@@ -606,7 +672,7 @@ fn it_rejects_tokens_with_missing_signatures() {
         let mut i = token.rsplitn(2, '.');
         match (i.next(), i.next(), i.next()) {
             (Some(a), Some(b), None) => (a.to_string(), b.to_string()),
-            _ => panic!("Unexpected split: {:?}", i)
+            _ => panic!("Unexpected split: {:?}", i),
         }
     }
 
@@ -623,13 +689,13 @@ fn it_rejects_tokens_with_missing_signatures() {
     // Try to validate without signature.
     match validator.decode(&signing_input, &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("invalid token", format!("{}", e))
+        Err(e) => assert_eq!("invalid token", format!("{}", e)),
     }
 
     // Try to validate with an empty signature.
     match validator.decode(&(signing_input.to_string() + "."), &vec![ISS_01]) {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("invalid signature", format!("{}", e))
+        Err(e) => assert_eq!("invalid signature", format!("{}", e)),
     }
 }
 
@@ -640,7 +706,7 @@ fn it_rejects_tokens_signed_with_unsupported_alg() {
         jwt::Algorithm::HS384,
         jwt::Algorithm::HS512,
         jwt::Algorithm::RS384,
-        jwt::Algorithm::RS512
+        jwt::Algorithm::RS512,
     ];
 
     for alg in unsupported_algs {
@@ -657,17 +723,14 @@ fn it_rejects_tokens_signed_with_unsupported_alg() {
                 let err_msg = format!("{}", e);
                 match alg {
                     // HSXXX signatures fail to be parsed  -> "Invalid signature"
-                    jwt::Algorithm::HS256 |
-                    jwt::Algorithm::HS384 |
-                    jwt::Algorithm::HS512 => {
+                    jwt::Algorithm::HS256 | jwt::Algorithm::HS384 | jwt::Algorithm::HS512 => {
                         assert_eq!(err_msg, "invalid signature")
-                    },
+                    }
                     // RSXXX signatures fail to be decoded -> "Invalid Algorithm"
-                    jwt::Algorithm::RS384 |
-                    jwt::Algorithm::RS512 => {
+                    jwt::Algorithm::RS384 | jwt::Algorithm::RS512 => {
                         assert_eq!(err_msg, "algorithms don't match")
-                    },
-                    _ => unreachable!()
+                    }
+                    _ => unreachable!(),
                 }
             }
         }

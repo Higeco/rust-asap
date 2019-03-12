@@ -1,9 +1,9 @@
 extern crate asap;
 #[macro_use]
 extern crate bencher;
+extern crate asap_deps_keyserver as keyserver;
 extern crate chrono;
 extern crate jsonwebtoken as jwt;
-extern crate asap_deps_keyserver as keyserver;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -25,7 +25,11 @@ const KID_01: &'static str = "service01/1530402390-public.der";
 const ISS_01: &'static str = "service01";
 
 fn default_generator() -> Generator {
-    Generator::new(ISS_01.to_string(), KID_01.to_string(), PRIVATE_KEY_01.to_vec())
+    Generator::new(
+        ISS_01.to_string(),
+        KID_01.to_string(),
+        PRIVATE_KEY_01.to_vec(),
+    )
 }
 
 fn default_aud() -> Aud {
@@ -51,7 +55,11 @@ fn speed_of_generating_tokens_with_extra_claims(b: &mut Bencher) {
     extra_claims.insert("baz".to_string(), json!(["baz", "bop"]));
 
     let mut generator = default_generator();
-    b.iter(|| generator.token(default_aud(), Some(extra_claims.clone())).unwrap());
+    b.iter(|| {
+        generator
+            .token(default_aud(), Some(extra_claims.clone()))
+            .unwrap()
+    });
 }
 
 fn speed_of_generating_tokens_with_extra_claims_with_caching_enabled(b: &mut Bencher) {
@@ -63,7 +71,11 @@ fn speed_of_generating_tokens_with_extra_claims_with_caching_enabled(b: &mut Ben
     let mut generator = default_generator();
     generator.enable_token_caching(10, ::std::time::Duration::from_millis(1000));
 
-    b.iter(|| generator.token(default_aud(), Some(extra_claims.clone())).unwrap());
+    b.iter(|| {
+        generator
+            .token(default_aud(), Some(extra_claims.clone()))
+            .unwrap()
+    });
 }
 
 fn speed_of_validating_tokens(b: &mut Bencher) {
@@ -71,8 +83,7 @@ fn speed_of_validating_tokens(b: &mut Bencher) {
     let token = generator.token(default_aud(), None).unwrap();
 
     let keyserver = Keyserver::start();
-    let mut validator = Validator::builder(keyserver.url().to_string(), ISS_01.to_string())
-        .build();
+    let mut validator = Validator::builder(keyserver.url().to_string(), ISS_01.to_string()).build();
 
     // Validate once to cache the public key:
     validator.decode(&token, &vec![ISS_01]).unwrap();
@@ -111,18 +122,19 @@ fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
     let mut generator = default_generator();
     let token = generator.token(default_aud(), None).unwrap();
 
-    let mut validator = Validator::builder("unused".to_string(), ISS_01.to_string())
-        .build();
+    let mut validator = Validator::builder("unused".to_string(), ISS_01.to_string()).build();
     b.iter(|| validator.dangerous_unsafe_decode(&token).unwrap());
 }
 
-benchmark_group!(generate,
+benchmark_group!(
+    generate,
     speed_of_generating_tokens,
     speed_of_generating_tokens_with_caching_enabled,
     speed_of_generating_tokens_with_extra_claims,
     speed_of_generating_tokens_with_extra_claims_with_caching_enabled
 );
-benchmark_group!(validate,
+benchmark_group!(
+    validate,
     speed_of_validating_tokens,
     speed_of_validating_tokens_without_asap,
     speed_of_dangerous_unsafe_decode

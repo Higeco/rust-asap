@@ -1,6 +1,6 @@
-use jwt;
-use std::result::{Result as StdResult};
 use failure::{Error, SyncFailure};
+use jwt;
+use std::result::Result as StdResult;
 
 // A handy alias for `Result` that carries a generic error type.
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -33,9 +33,12 @@ pub enum ValidatorError {
     #[fail(display = "JWT header did not contain a `kid` claim: {:?}", _0)]
     NoKIDFound(jwt::Header),
 
-    #[fail(display = "JWT header did not contain a valid `kid` claim. As per \
-        ASAP spec, the `kid` claim must start with \"$iss/\" where $iss is the \
-        issuer (kid: {:?}, iss: {:?})", _0, _1)]
+    #[fail(
+        display = "JWT header did not contain a valid `kid` claim. As per \
+                   ASAP spec, the `kid` claim must start with \"$iss/\" where $iss is the \
+                   issuer (kid: {:?}, iss: {:?})",
+        _0, _1
+    )]
     InvalidKID(String, String),
 
     #[fail(display = "Received `None` when fetching from cache")]
@@ -47,8 +50,10 @@ pub enum ValidatorError {
     #[fail(display = "Expired item: {:?}", _0)]
     ExpiredCache(String),
 
-    #[fail(display = "Token contained a lifespan greater than the `max_lifespan` \
-        (hard limit of 3600 seconds)")]
+    #[fail(
+        display = "Token contained a lifespan greater than the `max_lifespan` \
+                   (hard limit of 3600 seconds)"
+    )]
     InvalidLifespan,
 
     #[fail(display = "Immature jwt signature, nbf: {:?} exp: {:?}", _0, _1)]
@@ -63,11 +68,17 @@ pub enum ValidatorError {
     #[fail(display = "Required claim not found in token: {:?}", _0)]
     ClaimNotFound(String),
 
-    #[fail(display = "Resource server audience not found in `aud` claims of \
-        token {:?}", _0)]
+    #[fail(
+        display = "Resource server audience not found in `aud` claims of \
+                   token {:?}",
+        _0
+    )]
     UnrecognisedAudience(Vec<String>),
 
-    #[fail(display = "Unknown or unauthorized subject {:?}. The `sub` claim \
-        (or `iss`) must exist in `whitelisted_issuers` {:?}", _0, _1)]
-    UnauthorizedSubject(String, Vec<String>)
+    #[fail(
+        display = "Unknown or unauthorized subject {:?}. The `sub` claim \
+                   (or `iss`) must exist in `whitelisted_issuers` {:?}",
+        _0, _1
+    )]
+    UnauthorizedSubject(String, Vec<String>),
 }

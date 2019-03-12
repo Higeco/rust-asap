@@ -425,7 +425,10 @@ impl Validator {
             }
         }
 
-        Err(ValidatorError::KeyserverError("Failed to fetch a key from any keyserver".to_string()).into())
+        Err(
+            ValidatorError::KeyserverError("Failed to fetch a key from any keyserver".to_string())
+                .into(),
+        )
     }
 
     /// Decodes and validates the given token, returning both its claims and
@@ -473,7 +476,11 @@ impl Validator {
     ///     Err(e) => eprintln!("{:?}", e)
     /// }
     /// ```
-    pub fn decode(&mut self, token: &str, whitelisted_issuers: &[&str]) -> Result<TokenData<Claims>> {
+    pub fn decode(
+        &mut self,
+        token: &str,
+        whitelisted_issuers: &[&str],
+    ) -> Result<TokenData<Claims>> {
         // First, decode the header.
         let header = jwt::decode_header(token).sync()?;
 

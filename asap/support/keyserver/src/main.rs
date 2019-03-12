@@ -1,5 +1,5 @@
-extern crate hyper;
 extern crate asap_deps_keyserver as keyserver;
+extern crate hyper;
 
 use hyper::rt::Future;
 

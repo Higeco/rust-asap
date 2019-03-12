@@ -111,7 +111,7 @@ pub struct Generator {
     header: jwt::Header,
     private_key: Vec<u8>,
     claims_builder: ClaimsBuilder,
-    cache: Option<LruCache<String, String>>
+    cache: Option<LruCache<String, String>>,
 }
 
 impl Generator {
@@ -154,7 +154,7 @@ impl Generator {
             header,
             private_key,
             claims_builder,
-            cache: None
+            cache: None,
         }
     }
 
@@ -293,19 +293,23 @@ impl Generator {
         if let Some(ref mut cache) = self.cache {
             let cache_key = claims.cache_key();
             if let Some(cached_token) = cache.get(&cache_key) {
-                return Ok(cached_token.to_string())
+                return Ok(cached_token.to_string());
             }
 
             let token = Generator::generate_token(&self.header, &claims, &self.private_key)?;
             cache.insert(claims.cache_key(), token.clone());
-            return Ok(token)
+            return Ok(token);
         }
 
         // Encode it and sign it with the private key.
         Generator::generate_token(&self.header, &claims, &self.private_key)
     }
 
-    fn generate_token(header: &jwt::Header, claims: &Claims, private_key: &Vec<u8>) -> Result<String> {
+    fn generate_token(
+        header: &jwt::Header,
+        claims: &Claims,
+        private_key: &Vec<u8>,
+    ) -> Result<String> {
         let token = jwt::encode(&header, &claims, &private_key).sync()?;
         Ok(token)
     }
@@ -335,11 +339,7 @@ impl Generator {
     /// let auth_header = generator.auth_header(aud, None).unwrap();
     /// println!("{:?}", auth_header); // "Bearer eyJ0eXAiOiJKV..."
     /// ```
-    pub fn auth_header(
-        &mut self,
-        aud: Aud,
-        extra_claims: Option<ExtraClaims>,
-    ) -> Result<String> {
+    pub fn auth_header(&mut self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Result<String> {
         Ok(format!("Bearer {}", self.token(aud, extra_claims)?))
     }
 }
@@ -347,8 +347,8 @@ impl Generator {
 #[cfg(test)]
 mod tests {
 
-    use crate::claims::Aud;
     use super::*;
+    use crate::claims::Aud;
 
     #[test]
     fn it_does_not_cache_more_tokens_than_max_count() {
@@ -362,14 +362,18 @@ mod tests {
         generator.enable_token_caching(10, ::std::time::Duration::from_millis(1000));
         let _token_1 = generator.token(Aud::One(iss.to_string()), None).unwrap();
         let _token_2 = generator.token(Aud::One("foo".to_string()), None).unwrap();
-        let _token_3 = generator.token(Aud::Many(vec![iss.to_string(), "foo".to_string()]), None).unwrap();
+        let _token_3 = generator
+            .token(Aud::Many(vec![iss.to_string(), "foo".to_string()]), None)
+            .unwrap();
         assert_eq!(generator.cache.as_ref().unwrap().len(), 3);
 
         // Only caches 2/3 tokens.
         generator.enable_token_caching(2, ::std::time::Duration::from_millis(1000));
         let _token_1 = generator.token(Aud::One(iss.to_string()), None).unwrap();
         let _token_2 = generator.token(Aud::One("foo".to_string()), None).unwrap();
-        let _token_3 = generator.token(Aud::Many(vec![iss.to_string(), "foo".to_string()]), None).unwrap();
+        let _token_3 = generator
+            .token(Aud::Many(vec![iss.to_string(), "foo".to_string()]), None)
+            .unwrap();
         assert_eq!(generator.cache.unwrap().len(), 2);
     }
 }

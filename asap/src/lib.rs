@@ -98,19 +98,23 @@
 //! That's really it! It should be simple - that's the goal.
 
 extern crate chrono;
-#[macro_use] extern crate failure;
-#[macro_use] extern crate failure_derive;
+#[macro_use]
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
 extern crate jsonwebtoken as jwt;
 extern crate lru_time_cache;
 extern crate pem;
 extern crate rand;
 extern crate reqwest;
 extern crate serde;
-#[macro_use] extern crate serde_derive;
-#[macro_use] extern crate serde_json;
+#[macro_use]
+extern crate serde_derive;
+#[macro_use]
+extern crate serde_json;
 
-mod util;
-mod errors;
 pub mod claims;
+mod errors;
 pub mod generator;
+mod util;
 pub mod validator;

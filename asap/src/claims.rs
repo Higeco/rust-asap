@@ -1,6 +1,6 @@
 use chrono::Utc;
-use serde::{Serializer, Deserialize, Deserializer};
 use serde::ser::SerializeMap;
+use serde::{Deserialize, Deserializer, Serializer};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -84,11 +84,17 @@ pub struct Claims {
     /// Extra claims may be added to the token. These values will be serialised
     /// into the root of the token. If `None` is passed then no extra claims
     /// will be added to the token.
-    #[serde(flatten, deserialize_with = "de_extra_claims", serialize_with = "ser_extra_claims")]
+    #[serde(
+        flatten,
+        deserialize_with = "de_extra_claims",
+        serialize_with = "ser_extra_claims"
+    )]
     pub extra_claims: Option<ExtraClaims>,
 }
 
-fn de_extra_claims<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<ExtraClaims>, D::Error> {
+fn de_extra_claims<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<ExtraClaims>, D::Error> {
     let extra_claims = ExtraClaims::deserialize(deserializer)?;
     if extra_claims.len() > 0 {
         Ok(Some(extra_claims))
@@ -97,7 +103,10 @@ fn de_extra_claims<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<
     }
 }
 
-fn ser_extra_claims<S: Serializer>(extra_claims: &Option<ExtraClaims>, s: S) -> Result<S::Ok, S::Error> {
+fn ser_extra_claims<S: Serializer>(
+    extra_claims: &Option<ExtraClaims>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
     if let Some(claims) = extra_claims {
         let mut map = s.serialize_map(Some(claims.len()))?;
         for (k, v) in claims {
@@ -120,7 +129,8 @@ impl Claims {
             "iat": json!(self.iat),
             "exp": json!(self.exp),
             "extra_claims": json!(self.extra_claims)
-        })).unwrap()
+        }))
+        .unwrap()
     }
 }
 
