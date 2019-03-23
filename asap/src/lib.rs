@@ -39,7 +39,7 @@
 //! let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
 //!
 //! // Here's your generator! 🎉
-//! let mut generator = Generator::new(iss, kid, private_key);
+//! let generator = Generator::new(iss, kid, private_key);
 //!
 //! // Generate tokens, etc...
 //! # let aud = Aud::One("aud".to_string());

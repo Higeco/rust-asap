@@ -10,7 +10,7 @@ use util::generate_jti;
 pub const DEFAULT_TOKEN_LIFESPAN: i64 = 60 * 60;
 
 /// Claims required by ASAP. Cannot be overriden by the `extra_claims` field.
-pub const REQUIRED_CLAIMS: [&'static str; 5] = ["aud", "iss", "jti", "iat", "exp"];
+pub const REQUIRED_CLAIMS: [&str; 5] = ["aud", "iss", "jti", "iat", "exp"];
 
 /// This type exists to ease adding in any extra claims to your ASAP token.
 /// It is a HashMap where the keys correspond to top-level keys in the serialised token.
@@ -33,7 +33,7 @@ pub const REQUIRED_CLAIMS: [&'static str; 5] = ["aud", "iss", "jti", "iat", "exp
 /// # let iss = "service01".to_string();
 /// # let kid = "service01/my-key-id".to_string();
 /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
-/// # let mut generator = Generator::new(iss, kid, private_key);
+/// # let generator = Generator::new(iss, kid, private_key);
 /// let token = generator.token(aud, Some(extra_claims)).unwrap();
 /// ```
 pub type ExtraClaims = HashMap<String, Value>;
@@ -50,6 +50,7 @@ pub enum Aud {
 }
 
 impl Aud {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str<S: Into<String>>(aud: S) -> Aud {
         Aud::One(aud.into())
     }
@@ -96,7 +97,7 @@ fn de_extra_claims<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<ExtraClaims>, D::Error> {
     let extra_claims = ExtraClaims::deserialize(deserializer)?;
-    if extra_claims.len() > 0 {
+    if !extra_claims.is_empty() {
         Ok(Some(extra_claims))
     } else {
         Ok(None)
@@ -158,7 +159,7 @@ impl ClaimsBuilder {
 
     /// Creates a `Claims` struct. This method may be called multiple times to
     /// continue creating different `Claims` structs with the same configuration.
-    pub(crate) fn build(&mut self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Claims {
+    pub(crate) fn build(&self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Claims {
         let iss = self.iss.clone();
         let jti = generate_jti();
 
