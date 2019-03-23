@@ -134,7 +134,7 @@ fn keyserver_works() {
 fn it_works() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Test with no extra claims.
     let token = generator.token(default_aud(), None).unwrap();
@@ -155,7 +155,7 @@ fn instantiates_from_environment() {
     {
         setup_env(&keyserver);
         let generator = Generator::from_env().unwrap();
-        let mut validator = Validator::from_env().unwrap().build();
+        let validator = Validator::from_env().unwrap().build();
         let token = generator.token(default_aud(), mock_extra_claims()).unwrap();
         let token_data = validator.decode(&token, &vec![ISS_01]).unwrap();
         validate_claims(token_data, default_aud(), mock_extra_claims());
@@ -170,7 +170,7 @@ fn instantiates_from_environment() {
             "http://not-a-real-server/".to_string(),
         );
         let generator = Generator::from_env().unwrap();
-        let mut validator = Validator::from_env().unwrap().build();
+        let validator = Validator::from_env().unwrap().build();
         let token = generator.token(default_aud(), mock_extra_claims()).unwrap();
         let token_data = validator.decode(&token, &vec![ISS_01]).unwrap();
         validate_claims(token_data, default_aud(), mock_extra_claims());
@@ -184,7 +184,7 @@ fn validates_nbf_is_after_current_time() {
 
     let now = Utc::now().timestamp();
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Validation should fail since `nbf` is after current time.
     {
@@ -211,7 +211,7 @@ fn validates_nbf_is_after_current_time() {
 fn validates_exp_is_before_current_time() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Generate a token which expires in one second, then wait two before validating.
     generator.set_max_lifespan(1);
@@ -229,7 +229,7 @@ fn validates_exp_is_before_current_time() {
 fn validates_if_max_lifespan_is_exceeded() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Validation should succeed since `max_lifespan` is below default hard limit.
     let token = generator.token(default_aud(), None).unwrap();
@@ -252,7 +252,7 @@ fn validates_if_max_lifespan_is_exceeded() {
 fn validates_if_custom_max_lifespan_is_exceeded() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url())
+    let validator = get_validator_builder(keyserver.url())
         .max_lifespan(60)
         .build();
 
@@ -278,7 +278,7 @@ fn validates_if_custom_max_lifespan_is_exceeded() {
 fn validates_if_encounters_unrecognized_audience() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Should succeed since `Claims::default().aud = ISS_01`.
     let token = generator.token(default_aud(), None).unwrap();
@@ -301,7 +301,7 @@ fn validates_if_encounters_unrecognized_audience() {
 fn works_with_aud_as_vec() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Should succeed since claims vec contains `ISS_01`.
     let aud = Aud::Many(vec!["foo".to_string(), ISS_01.to_string()]);
@@ -325,7 +325,7 @@ fn works_with_aud_as_vec() {
 fn works_with_aud_as_string() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Should succeed since whitelisted_issuers contains `ISS_01`.
     let token = generator.token(default_aud(), None).unwrap();
@@ -351,7 +351,7 @@ fn iss_is_assumed_if_sub_is_undefined() {
     extra_claims.insert("sub".to_string(), json!(ISS_02));
 
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     let token_with_sub = generator.token(default_aud(), Some(extra_claims)).unwrap();
     let token_no_sub = generator.token(default_aud(), None).unwrap();
@@ -378,7 +378,7 @@ fn iss_is_assumed_if_sub_is_undefined() {
 #[test]
 fn validates_kid_is_owned_by_isser() {
     let keyserver = Keyserver::start();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Default implementations should pass because:
     // - `default_generator()` has `iss = "service01"` and `kid = "service01/..."`
@@ -409,7 +409,7 @@ fn it_rejects_duplicate_jti_claims() {
     let generator = default_generator();
 
     // Enable duplicate `jti` detection:
-    let mut validator = get_validator_builder(keyserver.url())
+    let validator = get_validator_builder(keyserver.url())
         .validate_jti(true)
         .build();
 
@@ -438,7 +438,7 @@ fn it_fails_with_wrong_public_key() {
         KID_02.to_string(),
         PRIVATE_KEY_01.to_vec(),
     );
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     let token = generator.token(default_aud(), None).unwrap();
     match validator.decode(&token, &vec![ISS_01]) {
@@ -455,7 +455,7 @@ fn it_fails_with_no_public_key() {
         "not-a-kid".to_string(),
         PRIVATE_KEY_01.to_vec(),
     );
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     let token = generator.token(default_aud(), None).unwrap();
     match validator.decode(&token, &vec![ISS_01]) {
@@ -472,7 +472,7 @@ fn it_uses_the_fallback_keyserver() {
     // Ensure the first keyserver fails.
     let invalid_keyserver = "http://not-a-real-server:1234/".to_string();
     let valid_keyserver = keyserver.url().to_string();
-    let mut validator = Validator::builder(invalid_keyserver, ISS_01.to_string())
+    let validator = Validator::builder(invalid_keyserver, ISS_01.to_string())
         .fallback_keyserver(valid_keyserver)
         .build();
 
@@ -486,7 +486,7 @@ fn it_fetches_key_from_cache() {
     let server = Keyserver::start();
 
     let generator = default_generator();
-    let mut validator = get_validator_builder(server.url()).build();
+    let validator = get_validator_builder(server.url()).build();
     let token = generator.token(default_aud(), None).unwrap();
 
     // Requesting the same `kid_01` twice should only result in 1 request.
@@ -504,7 +504,7 @@ fn it_does_not_fetch_expired_key_from_cache() {
     let token = generator.token(default_aud(), None).unwrap();
 
     // Make all tokens expire immediately.
-    let mut validator = get_validator_builder(server.url())
+    let validator = get_validator_builder(server.url())
         .cache_duration(Duration::from_nanos(0))
         .build();
 
@@ -519,7 +519,7 @@ fn it_does_not_fetch_expired_key_from_cache() {
 fn it_allows_extra_claims() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Overwrite each of the required claims.
     let mut extra_claims = HashMap::new();
@@ -543,7 +543,7 @@ fn it_allows_extra_claims() {
 fn it_does_not_override_required_claims() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Overwrite each of the required claims.
     let mut extra_claims = HashMap::new();
@@ -648,7 +648,7 @@ fn it_rejects_unsigned_tokens() {
     let token = header + "." + &body;
 
     let keyserver = Keyserver::start();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Validate without signature.
     match validator.decode(&token, &vec![ISS_01]) {
@@ -684,7 +684,7 @@ fn it_rejects_tokens_with_missing_signatures() {
     let (_signature, signing_input) = split_two(token);
 
     let keyserver = Keyserver::start();
-    let mut validator = get_validator_builder(keyserver.url()).build();
+    let validator = get_validator_builder(keyserver.url()).build();
 
     // Try to validate without signature.
     match validator.decode(&signing_input, &vec![ISS_01]) {
@@ -716,7 +716,7 @@ fn it_rejects_tokens_signed_with_unsupported_alg() {
         let token = jwt::encode(&header, &mock_claims(), &PRIVATE_KEY_01.to_vec()).unwrap();
 
         let keyserver = Keyserver::start();
-        let mut validator = get_validator_builder(keyserver.url()).build();
+        let validator = get_validator_builder(keyserver.url()).build();
         match validator.decode(&token, &vec![ISS_01]) {
             Ok(_) => panic!("Validation should fail."),
             Err(e) => {

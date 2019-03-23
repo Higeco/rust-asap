@@ -67,7 +67,7 @@
 //! let resource_server_audience = "my-server".to_string();
 //!
 //! // Build the ASAP validator:
-//! let mut validator = Validator::builder(primary_keyserver, resource_server_audience)
+//! let validator = Validator::builder(primary_keyserver, resource_server_audience)
 //!     .fallback_keyserver(fallback_keyserver)
 //!     .build();
 //!

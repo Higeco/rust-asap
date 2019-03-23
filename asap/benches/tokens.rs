@@ -83,7 +83,7 @@ fn speed_of_validating_tokens(b: &mut Bencher) {
     let token = generator.token(default_aud(), None).unwrap();
 
     let keyserver = Keyserver::start();
-    let mut validator = Validator::builder(keyserver.url().to_string(), ISS_01.to_string()).build();
+    let validator = Validator::builder(keyserver.url().to_string(), ISS_01.to_string()).build();
 
     // Validate once to cache the public key:
     validator.decode(&token, &vec![ISS_01]).unwrap();
@@ -121,7 +121,7 @@ fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
     let generator = default_generator();
     let token = generator.token(default_aud(), None).unwrap();
 
-    let mut validator = Validator::builder("unused".to_string(), ISS_01.to_string()).build();
+    let validator = Validator::builder("unused".to_string(), ISS_01.to_string()).build();
     b.iter(|| validator.dangerous_unsafe_decode(&token).unwrap());
 }
 

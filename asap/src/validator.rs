@@ -15,7 +15,7 @@
 //! # // Construct the ASAP validator:
 //! let keyserver = "http://my-keyserver/".to_string();
 //! # let resource_server_audience = "my-server".to_string();
-//! let mut validator = Validator::builder(keyserver, resource_server_audience)
+//! let validator = Validator::builder(keyserver, resource_server_audience)
 //!     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
 //!     .build();
 //!
@@ -29,6 +29,7 @@ use chrono::Utc;
 use jwt::{self, TokenData};
 use reqwest;
 use serde_json::{from_str, to_string, Map, Value};
+use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -97,7 +98,7 @@ impl ValidatorBuilder {
     ///
     /// let keyserver = "http://my-keyserver/".to_string();
     /// let resource_server_audience = "my-server".to_string();
-    /// let mut validator = ValidatorBuilder::new(keyserver, resource_server_audience)
+    /// let validator = ValidatorBuilder::new(keyserver, resource_server_audience)
     ///     .leeway(5)
     ///     .max_lifespan(120)
     ///     .cache_duration(Duration::from_secs(300))
@@ -171,7 +172,7 @@ impl ValidatorBuilder {
     /// let primary_keyserver = "http://my-keyserver/".to_string();
     /// let fallback_keyserver = "http://my-fallback-keyserver/".to_string();
     ///
-    /// let mut validator = Validator::builder(primary_keyserver, "my-server".to_string())
+    /// let validator = Validator::builder(primary_keyserver, "my-server".to_string())
     ///     .fallback_keyserver(fallback_keyserver)
     ///     .build();
     /// ```
@@ -205,9 +206,9 @@ impl ValidatorBuilder {
 
             validate_kid: self.validate_kid,
             validate_jti: self.validate_jti,
-            jti_seen: HashSet::new(),
+            jti_seen: RefCell::new(HashSet::new()),
 
-            key_cache: HashMap::new(),
+            key_cache: RefCell::new(HashMap::new()),
             key_cache_duration: self.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION),
         }
     }
@@ -244,7 +245,7 @@ impl ValidatorBuilder {
 /// // Construct the ASAP validator:
 /// let keyserver = "http://my-keyserver/".to_string();
 /// let resource_server_audience = "my-server".to_string();
-/// let mut validator = Validator::builder(keyserver, resource_server_audience)
+/// let validator = Validator::builder(keyserver, resource_server_audience)
 ///     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
 ///     .build();
 ///
@@ -299,9 +300,9 @@ pub struct Validator {
     /// These are tried in order until a key is successfully returned.
     keyserver_urls: Vec<String>,
     /// A hash-map used to store and check seen `jti` nonces.
-    jti_seen: HashSet<String>,
+    jti_seen: RefCell<HashSet<String>>,
     /// A hash-map used for simple key-caching.
-    key_cache: HashMap<String, (SystemTime, Vec<u8>)>,
+    key_cache: RefCell<HashMap<String, (SystemTime, Vec<u8>)>>,
     /// The duration each cached key is valid before it's fetched again.
     key_cache_duration: Duration,
 }
@@ -317,7 +318,7 @@ impl Validator {
     /// let fallback_keyserver = "http://my-fallback-keyserver/".to_string();
     /// let resource_server_audience = "my-server".to_string();
     ///
-    /// let mut validator = Validator::builder(keyserver, resource_server_audience)
+    /// let validator = Validator::builder(keyserver, resource_server_audience)
     ///     .leeway(5)
     ///     .max_lifespan(120)
     ///     .validate_kid(true)
@@ -366,20 +367,6 @@ impl Validator {
         Ok(vb)
     }
 
-    // Attempt to fetch the public key from cache.
-    fn get_key_from_cache(&mut self, kid: &str) -> Result<Vec<u8>> {
-        if let Some((when, public_key)) = self.key_cache.get(kid) {
-            let time_since = when.elapsed()?;
-            if time_since <= self.key_cache_duration {
-                Ok(public_key.to_vec())
-            } else {
-                Err(ValidatorError::ExpiredCache(String::from(kid)).into())
-            }
-        } else {
-            Err(ValidatorError::CacheError.into())
-        }
-    }
-
     // Fetch the public key from the keyserver by returning the response body
     // of: `GET <server_url><kid>`.
     fn get_key_from_server(&self, server_url: &str, kid: &str) -> Result<Vec<u8>> {
@@ -395,14 +382,15 @@ impl Validator {
 
     // Retrieves the public key for `kid`, checking the cache and then fetching
     // the key from the keyserver if the key isn't cached.
-    fn get_public_key(&mut self, kid: &str) -> Result<Vec<u8>> {
+    fn get_public_key(&self, kid: &str) -> Result<Vec<u8>> {
         // Fetch key from cache if there's a key.
-        if self.key_cache.contains_key(kid) {
+        let mut key_cache = self.key_cache.borrow_mut();
+        if key_cache.contains_key(kid) {
             // Extra scope here since `self.get_key_from_cache` borrows the
             // internal cache mutably. We won't be able to remove anything from
             // the cache if this ref is still alive.
             {
-                let cached_key = self.get_key_from_cache(&kid);
+                let cached_key = get_key_from_cache(&mut key_cache, self.key_cache_duration, &kid);
                 if cached_key.is_ok() {
                     return cached_key;
                 }
@@ -414,7 +402,7 @@ impl Validator {
             }
             // If there was any error fetching the key from the cache, just
             // remove the entry from cache.
-            self.key_cache.remove(kid);
+            key_cache.remove(kid);
         }
 
         // Otherwise, fetch the public key from the keyserver(s).
@@ -454,7 +442,7 @@ impl Validator {
     /// let primary_keyserver = "http://my-keyserver/".to_string();
     /// let fallback_keyserver = "http://my-fallback-keyserver/".to_string();
     /// let resource_server_audience = "my-server".to_string();
-    /// let mut validator = Validator::builder(primary_keyserver, resource_server_audience)
+    /// let validator = Validator::builder(primary_keyserver, resource_server_audience)
     ///     .fallback_keyserver(fallback_keyserver)
     ///     .build();
     ///
@@ -475,11 +463,7 @@ impl Validator {
     ///     Err(e) => eprintln!("{:?}", e)
     /// }
     /// ```
-    pub fn decode(
-        &mut self,
-        token: &str,
-        whitelisted_issuers: &[&str],
-    ) -> Result<TokenData<Claims>> {
+    pub fn decode(&self, token: &str, whitelisted_issuers: &[&str]) -> Result<TokenData<Claims>> {
         // First, decode the header.
         let header = jwt::decode_header(token).sync()?;
 
@@ -512,6 +496,7 @@ impl Validator {
         // If everything looks good, and the key is not yet cached, then store
         // the public key in the cache.
         self.key_cache
+            .borrow_mut()
             .entry(kid)
             .or_insert((SystemTime::now(), public_key));
 
@@ -527,14 +512,14 @@ impl Validator {
     /// token. **Do not use this** unless you know what you are doing.
     ///
     /// !!! WARNING !!!
-    pub fn dangerous_unsafe_decode(&mut self, token: &str) -> Result<TokenData<Claims>> {
+    pub fn dangerous_unsafe_decode(&self, token: &str) -> Result<TokenData<Claims>> {
         Ok(jwt::dangerous_unsafe_decode::<Claims>(token).sync()?)
     }
 
     // Validates the JWT token as per the ASAP specification.
     // The following claims are mandatory: `iss`, `exp`, `iat`, `aud` and `jti`.
     fn validate(
-        &mut self,
+        &self,
         kid: &str,
         claims: &Map<String, Value>,
         whitelisted_issuers: &[&str],
@@ -552,10 +537,10 @@ impl Validator {
         // the resource server decides to implement duplicate detection, it MUST
         // explicitly document that behaviour.
         if self.validate_jti {
-            if self.jti_seen.contains(&jti) {
+            if self.jti_seen.borrow().contains(&jti) {
                 return Err(ValidatorError::DuplicateJTI(jti).into());
             } else {
-                self.jti_seen.insert(jti.to_string());
+                self.jti_seen.borrow_mut().insert(jti.to_string());
             }
         }
 
@@ -635,6 +620,24 @@ impl Validator {
 
         // Token has been validated and authorised, proceed!
         Ok(())
+    }
+}
+
+// Attempt to fetch the public key from cache.
+fn get_key_from_cache(
+    key_cache: &mut HashMap<String, (SystemTime, Vec<u8>)>,
+    key_cache_duration: Duration,
+    kid: &str,
+) -> Result<Vec<u8>> {
+    if let Some((when, public_key)) = key_cache.get(kid) {
+        let time_since = when.elapsed()?;
+        if time_since <= key_cache_duration {
+            Ok(public_key.to_vec())
+        } else {
+            Err(ValidatorError::ExpiredCache(String::from(kid)).into())
+        }
+    } else {
+        Err(ValidatorError::CacheError.into())
     }
 }
 
