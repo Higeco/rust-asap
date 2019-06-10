@@ -186,7 +186,6 @@ impl ValidatorBuilder {
             // We perform our own validation of these claims.
             leeway: 0,
             validate_exp: false,
-            validate_iat: false,
             validate_nbf: false,
             iss: None,
             sub: None,

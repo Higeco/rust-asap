@@ -106,7 +106,6 @@ fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
     let jwt_validator = jwt::Validation {
         leeway: 0,
         validate_exp: false,
-        validate_iat: false,
         validate_nbf: false,
         iss: None,
         sub: None,
