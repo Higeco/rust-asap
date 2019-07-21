@@ -350,6 +350,13 @@ mod tests {
     use super::*;
     use crate::claims::Aud;
 
+    fn check_sync<T: Sync>() {}
+
+    #[test]
+    fn is_sync() {
+        check_sync::<Generator>();
+    }
+
     #[test]
     fn it_does_not_cache_more_tokens_than_max_count() {
         let iss = "service01";

@@ -637,3 +637,15 @@ impl Validator {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check_sync<T: Sync>() {}
+
+    #[test]
+    fn is_sync() {
+        check_sync::<Validator>();
+    }
+}
