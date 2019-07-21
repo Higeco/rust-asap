@@ -72,8 +72,8 @@
 use claims::{Aud, Claims, ClaimsBuilder, ExtraClaims};
 use jwt;
 use lru_time_cache::LruCache;
-use std::cell::RefCell;
 use std::env;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use errors::{Result, ResultExt};
@@ -111,8 +111,8 @@ use util::convert_pem_to_der;
 pub struct Generator {
     header: jwt::Header,
     private_key: Vec<u8>,
-    claims_builder: RefCell<ClaimsBuilder>,
-    cache: RefCell<Option<LruCache<String, String>>>,
+    claims_builder: Arc<RwLock<ClaimsBuilder>>,
+    cache: Arc<RwLock<Option<LruCache<String, String>>>>,
 }
 
 impl Generator {
@@ -154,8 +154,8 @@ impl Generator {
         Generator {
             header,
             private_key,
-            claims_builder: RefCell::new(claims_builder),
-            cache: RefCell::new(None),
+            claims_builder: Arc::new(RwLock::new(claims_builder)),
+            cache: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -176,13 +176,19 @@ impl Generator {
     /// Calling `Generator::enable_token_caching` multiple times will drop any
     /// previous caches stored.
     pub fn enable_token_caching(&self, max_count: usize, ttl: Duration) {
-        let cache = LruCache::<String, String>::with_expiry_duration_and_capacity(ttl, max_count);
-        self.cache.replace(Some(cache));
+        let new_cache =
+            LruCache::<String, String>::with_expiry_duration_and_capacity(ttl, max_count);
+        let mut cur_cache = self.cache.write().expect("failed to acquire lock on cache");
+        *cur_cache = Some(new_cache);
     }
 
     /// Disables token caching and returns the token cache (if any).
     pub fn disable_token_caching(&self) -> Option<LruCache<String, String>> {
-        self.cache.replace(None)
+        let mut cur_cache = self.cache.write().expect("failed to acquire lock on cache");
+        let old_cache = cur_cache.clone();
+        *cur_cache = None;
+
+        old_cache
     }
 
     /// Sets the max lifespan (in seconds) of the tokens created by this generator.
@@ -210,7 +216,10 @@ impl Generator {
     /// generator.set_max_lifespan(60);
     /// ```
     pub fn set_max_lifespan(&self, lifespan: i64) {
-        self.claims_builder.borrow_mut().lifespan(lifespan);
+        self.claims_builder
+            .write()
+            .expect("failed to acquire lock on claims builder")
+            .lifespan(lifespan);
     }
 
     /// Instantiates a generator from the environment. Requires that the
@@ -289,10 +298,14 @@ impl Generator {
     /// generator.token(aud, Some(extra_claims)).unwrap();
     /// ```
     pub fn token(&self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Result<String> {
-        let claims = self.claims_builder.borrow().build(aud, extra_claims);
+        let claims = self
+            .claims_builder
+            .write()
+            .expect("failed to acquire lock on claims builder")
+            .build(aud, extra_claims);
 
         {
-            let mut cache = self.cache.borrow_mut();
+            let mut cache = self.cache.write().unwrap();
             if cache.is_some() {
                 let cache = cache.as_mut().unwrap();
 
@@ -301,6 +314,7 @@ impl Generator {
                     return Ok(cached_token.to_string());
                 }
 
+                // TODO: unlock while generating token
                 let token = Generator::generate_token(&self.header, &claims, &self.private_key)?;
                 cache.insert(claims.cache_key(), token.clone());
                 return Ok(token);
@@ -374,7 +388,7 @@ mod tests {
         let _token_3 = generator
             .token(Aud::Many(vec![iss.to_string(), "foo".to_string()]), None)
             .unwrap();
-        assert_eq!(generator.cache.borrow().as_ref().unwrap().len(), 3);
+        assert_eq!(generator.cache.write().unwrap().as_ref().unwrap().len(), 3);
 
         // Only caches 2/3 tokens.
         generator.enable_token_caching(2, ::std::time::Duration::from_millis(1000));
@@ -383,6 +397,6 @@ mod tests {
         let _token_3 = generator
             .token(Aud::Many(vec![iss.to_string(), "foo".to_string()]), None)
             .unwrap();
-        assert_eq!(generator.cache.borrow().as_ref().unwrap().len(), 2);
+        assert_eq!(generator.cache.write().unwrap().as_ref().unwrap().len(), 2);
     }
 }
