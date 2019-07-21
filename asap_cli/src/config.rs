@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use errors::Result;
 use opt::Opt;
 
-pub const CONFIG_BASENAME: &'static str = ".asap-config";
+pub const CONFIG_BASENAME: &str = ".asap-config";
 
 #[derive(Debug, Fail)]
 pub enum ConfigError {

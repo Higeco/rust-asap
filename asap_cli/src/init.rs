@@ -27,13 +27,17 @@ pub fn run() -> Result<()> {
 
     // Save the config in the default config path, and fallback to the current
     // directory if getting that directory that fails.
-    let default_path = default_config_path().unwrap_or(env::current_dir()?.join(CONFIG_BASENAME));
+    let default_path = default_config_path().unwrap_or_else(|_| {
+        env::current_dir()
+            .expect("failed to get current directory")
+            .join(CONFIG_BASENAME)
+    });
 
     let output_path = read_line(&format!(
         "output path (default {}): ",
         default_path.display()
     ));
-    let output_path = if output_path.len() > 0 {
+    let output_path = if !output_path.is_empty() {
         PathBuf::from(&output_path)
     } else {
         default_path
@@ -76,9 +80,9 @@ fn read_line(prompt: &str) -> String {
 // > "aud"       = Aud::One("aud")
 // > "aud1,aud2" = Aud::Many(vec!["aud1", "aud2"])
 fn parse_audience(input: String) -> Aud {
-    if input.contains(",") {
+    if input.contains(',') {
         Aud::from_vec(input.split(',').collect())
     } else {
-        Aud::from_str(format!("{}", input))
+        Aud::from_str(input.to_string())
     }
 }
