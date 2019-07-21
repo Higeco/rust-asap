@@ -3,6 +3,7 @@ RBT := "RUST_BACKTRACE=1"
 # Runs the project's tests.
 test: build fmt
 	cargo test
+	cargo clippy
 
 # Builds the project.
 build:
