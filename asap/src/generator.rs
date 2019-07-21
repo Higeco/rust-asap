@@ -304,21 +304,33 @@ impl Generator {
             .expect("failed to acquire lock on claims builder")
             .build(aud, extra_claims);
 
-        {
-            let mut cache = self.cache.write().unwrap();
-            if cache.is_some() {
-                let cache = cache.as_mut().unwrap();
-
+        let cache_enabled = self
+            .cache
+            .read()
+            .expect("failed to acquire lock on cache")
+            .is_some();
+        if cache_enabled {
+            // Lock and check if we have a cached token.
+            {
+                let mut cache_inner = self.cache.write().expect("failed to acquire lock on cache");
+                let cache = cache_inner.as_mut().unwrap();
                 let cache_key = claims.cache_key();
                 if let Some(cached_token) = cache.get(&cache_key) {
                     return Ok(cached_token.to_string());
                 }
-
-                // TODO: unlock while generating token
-                let token = Generator::generate_token(&self.header, &claims, &self.private_key)?;
-                cache.insert(claims.cache_key(), token.clone());
-                return Ok(token);
             }
+
+            // If we didn't have a cached token, don't lock while generating the new token.
+            let token = Generator::generate_token(&self.header, &claims, &self.private_key)?;
+
+            // Lock while we update the cache with the new token.
+            {
+                let mut cache_inner = self.cache.write().expect("failed to acquire lock on cache");
+                let cache = cache_inner.as_mut().unwrap();
+                cache.insert(claims.cache_key(), token.clone());
+            }
+
+            return Ok(token);
         }
 
         // Encode it and sign it with the private key.

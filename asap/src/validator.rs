@@ -29,16 +29,18 @@ use chrono::Utc;
 use jwt::{self, TokenData};
 use reqwest;
 use serde_json::{from_str, to_string, Map, Value};
-use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io::Read;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use claims::Claims;
 use errors::{Result, ResultExt, ValidatorError};
 use util::{extract_aud_from_claims, extract_claim};
+
+type PublicKeyCache = HashMap<String, (SystemTime, Vec<u8>)>;
 
 /// The duration of how long the validator should cache public keys fetched
 /// from the keyserver.
@@ -206,9 +208,9 @@ impl ValidatorBuilder {
 
             validate_kid: self.validate_kid,
             validate_jti: self.validate_jti,
-            jti_seen: RefCell::new(HashSet::new()),
+            jti_seen: Arc::new(RwLock::new(HashSet::new())),
 
-            key_cache: RefCell::new(HashMap::new()),
+            key_cache: Arc::new(RwLock::new(HashMap::new())),
             key_cache_duration: self.cache_duration.unwrap_or(DEFAULT_CACHE_DURATION),
         }
     }
@@ -300,9 +302,9 @@ pub struct Validator {
     /// These are tried in order until a key is successfully returned.
     keyserver_urls: Vec<String>,
     /// A hash-map used to store and check seen `jti` nonces.
-    jti_seen: RefCell<HashSet<String>>,
+    jti_seen: Arc<RwLock<HashSet<String>>>,
     /// A hash-map used for simple key-caching.
-    key_cache: RefCell<HashMap<String, (SystemTime, Vec<u8>)>>,
+    key_cache: Arc<RwLock<PublicKeyCache>>,
     /// The duration each cached key is valid before it's fetched again.
     key_cache_duration: Duration,
 }
@@ -384,7 +386,10 @@ impl Validator {
     // the key from the keyserver if the key isn't cached.
     fn get_public_key(&self, kid: &str) -> Result<Vec<u8>> {
         // Fetch key from cache if there's a key.
-        let mut key_cache = self.key_cache.borrow_mut();
+        let mut key_cache = self
+            .key_cache
+            .write()
+            .expect("failed to acquire lock on public key cache");
         if key_cache.contains_key(kid) {
             // Extra scope here since `self.get_key_from_cache` borrows the
             // internal cache mutably. We won't be able to remove anything from
@@ -496,7 +501,8 @@ impl Validator {
         // If everything looks good, and the key is not yet cached, then store
         // the public key in the cache.
         self.key_cache
-            .borrow_mut()
+            .write()
+            .expect("failed to acquire lock on public key cache")
             .entry(kid)
             .or_insert((SystemTime::now(), public_key));
 
@@ -537,10 +543,18 @@ impl Validator {
         // the resource server decides to implement duplicate detection, it MUST
         // explicitly document that behaviour.
         if self.validate_jti {
-            if self.jti_seen.borrow().contains(&jti) {
+            if self
+                .jti_seen
+                .read()
+                .expect("failed to acquire lock on jti set")
+                .contains(&jti)
+            {
                 return Err(ValidatorError::DuplicateJTI(jti).into());
             } else {
-                self.jti_seen.borrow_mut().insert(jti.to_string());
+                self.jti_seen
+                    .write()
+                    .expect("failed to acquire lock on jti set")
+                    .insert(jti.to_string());
             }
         }
 
@@ -625,7 +639,7 @@ impl Validator {
 
 // Attempt to fetch the public key from cache.
 fn get_key_from_cache(
-    key_cache: &mut HashMap<String, (SystemTime, Vec<u8>)>,
+    key_cache: &mut PublicKeyCache,
     key_cache_duration: Duration,
     kid: &str,
 ) -> Result<Vec<u8>> {

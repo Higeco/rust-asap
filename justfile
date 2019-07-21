@@ -5,6 +5,10 @@ test: build fmt
 	cargo test
 	cargo clippy
 
+# Benchmarks the project.
+bench:
+	cargo bench
+
 # Builds the project.
 build:
 	cargo build
