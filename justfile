@@ -1,7 +1,7 @@
-RBT = "RUST_BACKTRACE=1"
+RBT := "RUST_BACKTRACE=1"
 
 # Runs the project's tests.
-test: build
+test: build fmt
 	cargo test
 
 # Builds the project.
