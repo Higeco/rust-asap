@@ -23,7 +23,7 @@ pub fn create_token(config: &Config) -> String {
     let iss = config.issuer.clone();
     let kid = config.key_id.clone();
     let pkey = config.private_key.clone();
-    let mut generator = Generator::new(iss, kid, pkey);
+    let generator = Generator::new(iss, kid, pkey);
 
     let aud = config.audience.clone();
     let extra_claims = config.extra_claims.clone();

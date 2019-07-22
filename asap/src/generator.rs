@@ -21,7 +21,7 @@
 //! // The `private_key` used to sign each token.
 //! let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
 //!
-//! let mut generator = Generator::new(iss, kid, private_key);
+//! let generator = Generator::new(iss, kid, private_key);
 //!
 //! // You can then use the generator to create ASAP tokens:
 //!
@@ -58,7 +58,7 @@
 //! # // The `private_key` used to sign each token.
 //! # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
 //! #
-//! # let mut generator = Generator::new(iss, kid, private_key);
+//! # let generator = Generator::new(iss, kid, private_key);
 //! # let aud = Aud::One("target-service".to_string());
 //! #
 //! let mut extra_claims = HashMap::new();
@@ -73,6 +73,7 @@ use claims::{Aud, Claims, ClaimsBuilder, ExtraClaims};
 use jwt;
 use lru_time_cache::LruCache;
 use std::env;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use errors::{Result, ResultExt};
@@ -105,13 +106,13 @@ use util::convert_pem_to_der;
 /// // The `private_key` used to sign each token.
 /// let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
 ///
-/// let mut generator = Generator::new(iss, kid, private_key);
+/// let generator = Generator::new(iss, kid, private_key);
 /// ```
 pub struct Generator {
     header: jwt::Header,
     private_key: Vec<u8>,
-    claims_builder: ClaimsBuilder,
-    cache: Option<LruCache<String, String>>,
+    claims_builder: Arc<RwLock<ClaimsBuilder>>,
+    cache: Arc<RwLock<Option<LruCache<String, String>>>>,
 }
 
 impl Generator {
@@ -153,8 +154,8 @@ impl Generator {
         Generator {
             header,
             private_key,
-            claims_builder,
-            cache: None,
+            claims_builder: Arc::new(RwLock::new(claims_builder)),
+            cache: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -174,14 +175,20 @@ impl Generator {
     ///
     /// Calling `Generator::enable_token_caching` multiple times will drop any
     /// previous caches stored.
-    pub fn enable_token_caching(&mut self, max_count: usize, ttl: Duration) {
-        let cache = LruCache::<String, String>::with_expiry_duration_and_capacity(ttl, max_count);
-        self.cache = Some(cache);
+    pub fn enable_token_caching(&self, max_count: usize, ttl: Duration) {
+        let new_cache =
+            LruCache::<String, String>::with_expiry_duration_and_capacity(ttl, max_count);
+        let mut cur_cache = self.cache.write().expect("failed to acquire lock on cache");
+        *cur_cache = Some(new_cache);
     }
 
     /// Disables token caching and returns the token cache (if any).
-    pub fn disable_token_caching(&mut self) -> Option<LruCache<String, String>> {
-        self.cache.take()
+    pub fn disable_token_caching(&self) -> Option<LruCache<String, String>> {
+        let mut cur_cache = self.cache.write().expect("failed to acquire lock on cache");
+        let old_cache = cur_cache.clone();
+        *cur_cache = None;
+
+        old_cache
     }
 
     /// Sets the max lifespan (in seconds) of the tokens created by this generator.
@@ -205,11 +212,14 @@ impl Generator {
     /// let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
     ///
     /// // Make generated tokens expire after 60 seconds.
-    /// let mut generator = Generator::new(iss, kid, private_key);
+    /// let generator = Generator::new(iss, kid, private_key);
     /// generator.set_max_lifespan(60);
     /// ```
-    pub fn set_max_lifespan(&mut self, lifespan: i64) {
-        self.claims_builder.lifespan(lifespan);
+    pub fn set_max_lifespan(&self, lifespan: i64) {
+        self.claims_builder
+            .write()
+            .expect("failed to acquire lock on claims builder")
+            .lifespan(lifespan);
     }
 
     /// Instantiates a generator from the environment. Requires that the
@@ -272,7 +282,7 @@ impl Generator {
     /// # // The `private_key` used to sign each token.
     /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
     /// #
-    /// # let mut generator = Generator::new(iss, kid, private_key);
+    /// # let generator = Generator::new(iss, kid, private_key);
     /// #
     /// // Your target audience (the `aud` claim):
     /// let aud = Aud::One("target-audience".to_string());
@@ -287,17 +297,39 @@ impl Generator {
     ///
     /// generator.token(aud, Some(extra_claims)).unwrap();
     /// ```
-    pub fn token(&mut self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Result<String> {
-        let claims = self.claims_builder.build(aud, extra_claims);
+    pub fn token(&self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Result<String> {
+        let claims = self
+            .claims_builder
+            .write()
+            .expect("failed to acquire lock on claims builder")
+            .build(aud, extra_claims);
 
-        if let Some(ref mut cache) = self.cache {
-            let cache_key = claims.cache_key();
-            if let Some(cached_token) = cache.get(&cache_key) {
-                return Ok(cached_token.to_string());
+        let cache_enabled = self
+            .cache
+            .read()
+            .expect("failed to acquire lock on cache")
+            .is_some();
+        if cache_enabled {
+            // Lock and check if we have a cached token.
+            {
+                let mut cache_inner = self.cache.write().expect("failed to acquire lock on cache");
+                let cache = cache_inner.as_mut().unwrap();
+                let cache_key = claims.cache_key();
+                if let Some(cached_token) = cache.get(&cache_key) {
+                    return Ok(cached_token.to_string());
+                }
             }
 
+            // If we didn't have a cached token, don't lock while generating the new token.
             let token = Generator::generate_token(&self.header, &claims, &self.private_key)?;
-            cache.insert(claims.cache_key(), token.clone());
+
+            // Lock while we update the cache with the new token.
+            {
+                let mut cache_inner = self.cache.write().expect("failed to acquire lock on cache");
+                let cache = cache_inner.as_mut().unwrap();
+                cache.insert(claims.cache_key(), token.clone());
+            }
+
             return Ok(token);
         }
 
@@ -305,11 +337,7 @@ impl Generator {
         Generator::generate_token(&self.header, &claims, &self.private_key)
     }
 
-    fn generate_token(
-        header: &jwt::Header,
-        claims: &Claims,
-        private_key: &Vec<u8>,
-    ) -> Result<String> {
+    fn generate_token(header: &jwt::Header, claims: &Claims, private_key: &[u8]) -> Result<String> {
         let token = jwt::encode(&header, &claims, &private_key).sync()?;
         Ok(token)
     }
@@ -334,12 +362,12 @@ impl Generator {
     /// # // The `private_key` used to sign each token.
     /// # let private_key = include_bytes!("../support/keys/service01/1530402390-private.der").to_vec();
     /// #
-    /// # let mut generator = Generator::new(iss, kid, private_key);
+    /// # let generator = Generator::new(iss, kid, private_key);
     /// # let aud = Aud::One("target-audience".to_string());
     /// let auth_header = generator.auth_header(aud, None).unwrap();
     /// println!("{:?}", auth_header); // "Bearer eyJ0eXAiOiJKV..."
     /// ```
-    pub fn auth_header(&mut self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Result<String> {
+    pub fn auth_header(&self, aud: Aud, extra_claims: Option<ExtraClaims>) -> Result<String> {
         Ok(format!("Bearer {}", self.token(aud, extra_claims)?))
     }
 }
@@ -363,7 +391,7 @@ mod tests {
         let kid = "service01/1530402390-public.der";
         let private_key = include_bytes!("../support/keys/service01/1530402390-private.der");
 
-        let mut generator = Generator::new(iss.to_string(), kid.to_string(), private_key.to_vec());
+        let generator = Generator::new(iss.to_string(), kid.to_string(), private_key.to_vec());
 
         // Caches all 3 tokens.
         generator.enable_token_caching(10, ::std::time::Duration::from_millis(1000));
@@ -372,7 +400,7 @@ mod tests {
         let _token_3 = generator
             .token(Aud::Many(vec![iss.to_string(), "foo".to_string()]), None)
             .unwrap();
-        assert_eq!(generator.cache.as_ref().unwrap().len(), 3);
+        assert_eq!(generator.cache.write().unwrap().as_ref().unwrap().len(), 3);
 
         // Only caches 2/3 tokens.
         generator.enable_token_caching(2, ::std::time::Duration::from_millis(1000));
@@ -381,6 +409,6 @@ mod tests {
         let _token_3 = generator
             .token(Aud::Many(vec![iss.to_string(), "foo".to_string()]), None)
             .unwrap();
-        assert_eq!(generator.cache.unwrap().len(), 2);
+        assert_eq!(generator.cache.write().unwrap().as_ref().unwrap().len(), 2);
     }
 }

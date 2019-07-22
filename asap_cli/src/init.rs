@@ -19,7 +19,7 @@ pub fn run() -> Result<()> {
     ));
 
     let extra_claims = read_line("extra claims (as JSON string, leave blank for none): ");
-    let extra_claims = if extra_claims.len() > 0 {
+    let extra_claims = if !extra_claims.is_empty() {
         serde_json::from_str(&extra_claims).expect("failed to pass extra_claims json")
     } else {
         None
