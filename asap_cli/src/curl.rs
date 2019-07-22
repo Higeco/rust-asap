@@ -1,8 +1,8 @@
 use std::process::Command;
 
-use config::Config;
-use errors::Result;
-use token;
+use crate::config::Config;
+use crate::errors::Result;
+use crate::token;
 
 // Simply inject an authorisation header into curl and pass along all other
 // arguments passed to the binary.

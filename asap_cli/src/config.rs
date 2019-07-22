@@ -6,8 +6,8 @@ use std::env;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
-use errors::Result;
-use opt::Opt;
+use crate::errors::Result;
+use crate::opt::Opt;
 
 pub const CONFIG_BASENAME: &str = ".asap-config";
 

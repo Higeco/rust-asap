@@ -8,9 +8,9 @@ extern crate serde;
 #[macro_use]
 extern crate serde_json;
 
+use crate::jwt::TokenData;
+use crate::keyserver::Keyserver;
 use chrono::Utc;
-use jwt::TokenData;
-use keyserver::Keyserver;
 use std::collections::HashMap;
 use std::env;
 use std::thread;

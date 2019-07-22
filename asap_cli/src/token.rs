@@ -1,7 +1,7 @@
 use asap::generator::Generator;
 
-use config::Config;
-use errors::Result;
+use crate::config::Config;
+use crate::errors::Result;
 
 // Print a generated ASAP token.
 pub fn run(config: &Config, full_header: bool, auth_header: bool) -> Result<()> {

@@ -4,7 +4,7 @@ use serde::{Deserialize, Deserializer, Serializer};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use util::generate_jti;
+use crate::util::generate_jti;
 
 // Default token lifespan (one hour).
 pub const DEFAULT_TOKEN_LIFESPAN: i64 = 60 * 60;

@@ -1,13 +1,13 @@
+use crate::config::{self, Config};
 use asap::claims::Aud;
-use config::{self, Config};
 use serde_json;
 use std::env;
 use std::fs::{create_dir_all, File};
 use std::io::{stdin, stdout, Write};
 use std::path::PathBuf;
 
-use config::{default_config_path, CONFIG_BASENAME};
-use errors::Result;
+use crate::config::{default_config_path, CONFIG_BASENAME};
+use crate::errors::Result;
 
 // Prompt the user to create an `.asap-config` file.
 pub fn run() -> Result<()> {

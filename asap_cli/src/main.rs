@@ -20,9 +20,9 @@ mod init;
 mod opt;
 mod token;
 
-use config::{Config, ConfigError};
-use errors::Result;
-use opt::{Opt, SubCommand};
+use crate::config::{Config, ConfigError};
+use crate::errors::Result;
+use crate::opt::{Opt, SubCommand};
 use structopt::StructOpt;
 
 fn check_result<T>(result: Result<T>) {

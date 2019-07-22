@@ -10,11 +10,11 @@ extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
 
+use crate::keyserver::Keyserver;
 use asap::claims::Aud;
 use asap::generator::Generator;
 use asap::validator::Validator;
 use bencher::Bencher;
-use keyserver::Keyserver;
 use std::collections::HashMap;
 
 // A private key to use to sign the tokens.

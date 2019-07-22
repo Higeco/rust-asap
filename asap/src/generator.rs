@@ -69,15 +69,15 @@
 //! let token = generator.token(aud, Some(extra_claims)).unwrap();
 //! ```
 
-use claims::{Aud, Claims, ClaimsBuilder, ExtraClaims};
-use jwt;
+use crate::claims::{Aud, Claims, ClaimsBuilder, ExtraClaims};
+use crate::jwt;
 use lru_time_cache::LruCache;
 use std::env;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use errors::{Result, ResultExt};
-use util::convert_pem_to_der;
+use crate::errors::{Result, ResultExt};
+use crate::util::convert_pem_to_der;
 
 /// An ASAP generator.
 ///
