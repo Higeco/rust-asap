@@ -312,8 +312,8 @@ impl Generator {
         if cache_enabled {
             // Lock and check if we have a cached token.
             {
-                let mut cache_inner = self.cache.write().expect("failed to acquire lock on cache");
-                let cache = cache_inner.as_mut().unwrap();
+                let mut cache_opt = self.cache.write().expect("failed to acquire lock on cache");
+                let cache = cache_opt.as_mut().unwrap();
                 let cache_key = claims.cache_key();
                 if let Some(cached_token) = cache.get(&cache_key) {
                     return Ok(cached_token.to_string());
@@ -325,8 +325,8 @@ impl Generator {
 
             // Lock while we update the cache with the new token.
             {
-                let mut cache_inner = self.cache.write().expect("failed to acquire lock on cache");
-                let cache = cache_inner.as_mut().unwrap();
+                let mut cache_opt = self.cache.write().expect("failed to acquire lock on cache");
+                let cache = cache_opt.as_mut().unwrap();
                 cache.insert(claims.cache_key(), token.clone());
             }
 
