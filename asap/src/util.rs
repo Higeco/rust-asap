@@ -5,7 +5,7 @@ use serde::de::DeserializeOwned;
 use serde_json::map::Map;
 use serde_json::{from_value, Value};
 
-use errors::{Result, ValidatorError};
+use crate::errors::{Result, ValidatorError};
 
 // Extract the `aud` claim (which may be a string or array of strings) from a
 // claims map.

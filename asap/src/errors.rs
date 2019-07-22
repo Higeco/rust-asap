@@ -1,5 +1,5 @@
+use crate::jwt;
 use failure::{Error, SyncFailure};
-use jwt;
 use std::result::Result as StdResult;
 
 // A handy alias for `Result` that carries a generic error type.

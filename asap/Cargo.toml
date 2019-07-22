@@ -3,6 +3,7 @@ name = "asap"
 readme = "../README.md"
 version = "0.8.0"
 license = "MIT"
+edition = "2018"
 authors = [
   "Callum Osmotherly <cosmotherly@atlassian.com>",
   "Robin Stocker <rstocker@atlassian.com>",
@@ -16,13 +17,13 @@ description = "An implementation of ASAP for rust."
 
 [dependencies]
 chrono = "0.4"
-failure = "0.1.1"
-failure_derive = "0.1.1"
+failure = "0.1"
+failure_derive = "0.1"
 jsonwebtoken = "6"
-lru_time_cache = "0.8.1"
-pem = "0.5.0"
-rand = "0.5"
-reqwest = "0.9.11"
+lru_time_cache = "0.9"
+pem = "0.5"
+rand = "0.7"
+reqwest = "0.9"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"

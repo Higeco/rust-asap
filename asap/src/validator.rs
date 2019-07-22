@@ -25,8 +25,8 @@
 //! }
 //! ```
 
+use crate::jwt::{self, TokenData};
 use chrono::Utc;
-use jwt::{self, TokenData};
 use reqwest;
 use serde_json::{from_str, to_string, Map, Value};
 use std::cmp::max;
@@ -36,9 +36,9 @@ use std::io::Read;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
-use claims::Claims;
-use errors::{Result, ResultExt, ValidatorError};
-use util::{extract_aud_from_claims, extract_claim};
+use crate::claims::Claims;
+use crate::errors::{Result, ResultExt, ValidatorError};
+use crate::util::{extract_aud_from_claims, extract_claim};
 
 type PublicKeyCache = HashMap<String, (SystemTime, Vec<u8>)>;
 
