@@ -66,7 +66,7 @@ pub fn server(addr: &SocketAddr) -> (SocketAddr, impl Future<Item = (), Error = 
 }
 
 // Where the keys are stored.
-const KEYS_PATH: &'static str = "support/keys/";
+const KEYS_PATH: &str = "support/keys/";
 
 fn service(request: Request<Body>, counter: &AtomicUsize) -> Response<Body> {
     match (request.method(), request.uri().path()) {

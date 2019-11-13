@@ -56,7 +56,7 @@ impl Aud {
     }
 
     pub fn from_vec(list: Vec<&str>) -> Aud {
-        Aud::Many(list.iter().map(|s| s.to_string()).collect())
+        Aud::Many(list.iter().map(|s| (*s).to_string()).collect())
     }
 }
 

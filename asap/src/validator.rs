@@ -554,7 +554,7 @@ impl Validator {
                 self.jti_seen
                     .write()
                     .expect("failed to acquire lock on jti set")
-                    .insert(jti.to_string());
+                    .insert(jti);
             }
         }
 
@@ -565,7 +565,7 @@ impl Validator {
         // the `iss` claim) and, in affirmative case, accept that as proof of
         // ownership of the key by the issuer.
         if self.validate_kid && !kid.starts_with(&format!("{}/", &iss)) {
-            return Err(ValidatorError::InvalidKID(kid.to_string(), iss.to_string()).into());
+            return Err(ValidatorError::InvalidKID(kid.to_string(), iss).into());
         }
 
         // From ASAP spec:
