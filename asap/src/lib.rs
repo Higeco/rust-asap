@@ -58,6 +58,9 @@
 //! use asap::claims::Claims;
 //! use asap::validator::Validator;
 //!
+//! # #[tokio::main]
+//! # async fn main() {
+//!
 //! let asap_token = "<your-asap-token>";
 //!
 //! // The keyserver(s) which hosts your public keys.
@@ -73,7 +76,7 @@
 //!
 //! // A list of issuers that are allowed to access this server/resource.
 //! let whitelisted_issuers = vec!["list", "of", "whitelisted", "issuers"];
-//! match validator.decode(asap_token, &whitelisted_issuers) {
+//! match validator.decode(asap_token, &whitelisted_issuers).await {
 //!     Ok(token_data) => {
 //!         // Here you have a successfully verified and accepted access token!
 //!         //
@@ -93,6 +96,7 @@
 //!         eprintln!("{:?}", e);
 //!     }
 //! }
+//! # }
 //! ```
 //!
 //! That's really it! It should be simple - that's the goal.

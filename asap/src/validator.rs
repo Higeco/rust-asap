@@ -9,6 +9,8 @@
 //! # use asap::claims::Claims;
 //! # use asap::validator::Validator;
 //! #
+//! # #[tokio::main]
+//! # async fn main() {
 //! #
 //! # let asap_token = "<your-token-here>";
 //! #
@@ -19,20 +21,21 @@
 //!     .fallback_keyserver("http://my-fallback-keyserver/".to_string())
 //!     .build();
 //!
-//! match validator.decode(asap_token, &vec!["authorized", "subjects"]) {
+//! match validator.decode(asap_token, &vec!["authorized", "subjects"]).await {
 //!     Ok(token_data) => println!("claims {:?}", token_data.claims),
 //!     Err(e) => eprintln!("error validation token/invalid token: {:?}", e)
 //! }
+//! # }
 //! ```
 
 use crate::jwt::{self, TokenData};
+use bytes::Bytes;
 use chrono::Utc;
 use reqwest;
 use serde_json::{from_str, to_string, Map, Value};
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::io::Read;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
@@ -40,7 +43,7 @@ use crate::claims::Claims;
 use crate::errors::{Result, ResultExt, ValidatorError};
 use crate::util::{extract_aud_from_claims, extract_claim};
 
-type PublicKeyCache = HashMap<String, (SystemTime, Vec<u8>)>;
+type PublicKeyCache = HashMap<String, (SystemTime, Bytes)>;
 
 /// The duration of how long the validator should cache public keys fetched
 /// from the keyserver.
@@ -244,6 +247,8 @@ impl ValidatorBuilder {
 /// # use asap::claims::Claims;
 /// # use asap::validator::Validator;
 /// #
+/// # #[tokio::main]
+/// # async fn main() {
 /// // Construct the ASAP validator:
 /// let keyserver = "http://my-keyserver/".to_string();
 /// let resource_server_audience = "my-server".to_string();
@@ -254,7 +259,7 @@ impl ValidatorBuilder {
 /// let asap_token = "<your-token-here>";
 /// let whitelisted_issuers = vec!["list", "of", "whitelisted", "issuers"];
 ///
-/// match validator.decode(asap_token, &whitelisted_issuers) {
+/// match validator.decode(asap_token, &whitelisted_issuers).await {
 ///     Ok(token_data) => {
 ///         // Here you have a successfully verified and accepted access token!
 ///         //
@@ -278,6 +283,7 @@ impl ValidatorBuilder {
 ///         eprintln!("{:?}", e);
 ///     }
 /// }
+/// # }
 /// ```
 pub struct Validator {
     /// Whether or not the validator should check for duplicate `jti` nonces.
@@ -371,12 +377,10 @@ impl Validator {
 
     // Fetch the public key from the keyserver by returning the response body
     // of: `GET <server_url><kid>`.
-    fn get_key_from_server(&self, server_url: &str, kid: &str) -> Result<Vec<u8>> {
-        let mut response = reqwest::get(&format!("{}{}", server_url, kid))?;
+    async fn get_key_from_server(&self, server_url: &str, kid: &str) -> Result<Bytes> {
+        let response = reqwest::get(&format!("{}{}", server_url, kid)).await?;
         if response.status().is_success() {
-            let mut public_key = Vec::new();
-            response.read_to_end(&mut public_key)?;
-            Ok(public_key)
+            Ok(response.bytes().await?)
         } else {
             Err(ValidatorError::KeyserverError(response.status().to_string()).into())
         }
@@ -384,7 +388,7 @@ impl Validator {
 
     // Retrieves the public key for `kid`, checking the cache and then fetching
     // the key from the keyserver if the key isn't cached.
-    fn get_public_key(&self, kid: &str) -> Result<Vec<u8>> {
+    async fn get_public_key(&self, kid: &str) -> Result<Bytes> {
         // Fetch key from cache if there's a key.
         let mut key_cache = self
             .key_cache
@@ -412,7 +416,7 @@ impl Validator {
 
         // Otherwise, fetch the public key from the keyserver(s).
         for url in &self.keyserver_urls {
-            if let Ok(key) = self.get_key_from_server(&url, &kid) {
+            if let Ok(key) = self.get_key_from_server(&url, &kid).await {
                 return Ok(key);
             }
         }
@@ -443,6 +447,8 @@ impl Validator {
     /// # use asap::claims::Claims;
     /// # use asap::validator::Validator;
     /// #
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// // Construct the ASAP validator:
     /// let primary_keyserver = "http://my-keyserver/".to_string();
     /// let fallback_keyserver = "http://my-fallback-keyserver/".to_string();
@@ -454,7 +460,7 @@ impl Validator {
     /// let asap_token = "<your-token-here>";
     /// let whitelisted_issuers = vec!["list", "of", "whitelisted", "issuers"];
     ///
-    /// match validator.decode(asap_token, &whitelisted_issuers) {
+    /// match validator.decode(asap_token, &whitelisted_issuers).await {
     ///     Ok(token_data) => {
     ///         // Token is a valid ASAP token and is authorised.
     ///         println!("header: {:?}", token_data.header);
@@ -467,8 +473,13 @@ impl Validator {
     ///     //  - the public key could not be retreived
     ///     Err(e) => eprintln!("{:?}", e)
     /// }
+    /// # }
     /// ```
-    pub fn decode(&self, token: &str, whitelisted_issuers: &[&str]) -> Result<TokenData<Claims>> {
+    pub async fn decode(
+        &self,
+        token: &str,
+        whitelisted_issuers: &[&str],
+    ) -> Result<TokenData<Claims>> {
         // First, decode the header.
         let header = jwt::decode_header(token).sync()?;
 
@@ -479,7 +490,7 @@ impl Validator {
             .ok_or_else(|| ValidatorError::NoKIDFound(header))?;
 
         // Retreive the public key (from cache or the keyserver).
-        let public_key = self.get_public_key(&kid)?;
+        let public_key = self.get_public_key(&kid).await?;
 
         // Decode the token (this also validates its signature).
         let data = jwt::decode::<Claims>(token, &public_key, &self.jwt_validator).sync()?;
@@ -642,11 +653,11 @@ fn get_key_from_cache(
     key_cache: &mut PublicKeyCache,
     key_cache_duration: Duration,
     kid: &str,
-) -> Result<Vec<u8>> {
+) -> Result<Bytes> {
     if let Some((when, public_key)) = key_cache.get(kid) {
         let time_since = when.elapsed()?;
         if time_since <= key_cache_duration {
-            Ok(public_key.to_vec())
+            Ok(public_key.clone())
         } else {
             Err(ValidatorError::ExpiredCache(String::from(kid)).into())
         }
