@@ -1,6 +1,6 @@
 [package]
 name = "asap_deps_keyserver"
-version = "0.1.1"
+version = "0.2.0"
 license = "MIT"
 edition = "2018"
 authors = ["Callum Osmotherly <cosmotherly@atlassian.com>"]
