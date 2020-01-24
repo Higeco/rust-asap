@@ -9,14 +9,14 @@ use std::sync::Arc;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Error, Method, Request, Response, Server, StatusCode};
-use tokio::task::JoinHandle;
+use tokio::sync::oneshot;
 
 /// Keyserver that can be used for testing. Shuts down when dropped.
 pub struct Keyserver {
     url: String,
-    // As long as the ThreadPool is alive, the server is running.
+    // As long as the ShutdownHandle is alive, the server is running.
     // Dropping it shuts down the server.
-    _handle: JoinHandle<()>,
+    _handle: ShutdownHandle,
 }
 
 impl Keyserver {
@@ -27,8 +27,8 @@ impl Keyserver {
 
     pub fn start_on_port(port: u16) -> Keyserver {
         let addr = ([127, 0, 0, 1], port).into();
-        let (bound_addr, server) = server(&addr);
-        let handle = tokio::spawn(async {
+        let (bound_addr, server, shutdown_handle) = server(&addr);
+        tokio::spawn(async {
             server
                 .await
                 .unwrap_or_else(|e| eprintln!("server error: {}", e))
@@ -36,7 +36,7 @@ impl Keyserver {
         let url = format!("http://localhost:{}/", bound_addr.port());
         Keyserver {
             url,
-            _handle: handle,
+            _handle: shutdown_handle,
         }
     }
 
@@ -54,7 +54,7 @@ impl Keyserver {
     }
 }
 
-pub fn server(addr: &SocketAddr) -> (SocketAddr, impl Future<Output = Result<(), Error>>) {
+pub fn server(addr: &SocketAddr) -> (SocketAddr, impl Future<Output = Result<(), Error>>, ShutdownHandle) {
     let counter = Arc::new(AtomicUsize::new(0));
     // the function passed to make_service_fn is called once per connection
     let new_service = make_service_fn(move |_socket| {
@@ -68,9 +68,26 @@ pub fn server(addr: &SocketAddr) -> (SocketAddr, impl Future<Output = Result<(),
         }
     });
 
+    let (tx, rx) = oneshot::channel::<()>();
+
     let server = Server::bind(addr).serve(new_service);
     let local_addr = server.local_addr();
-    (local_addr, server)
+    let server = server.with_graceful_shutdown(async {
+        rx.await.ok();
+    });
+    (local_addr, server, ShutdownHandle { tx: Some(tx) })
+}
+
+pub struct ShutdownHandle {
+    tx: Option<oneshot::Sender<()>>,
+}
+
+impl Drop for ShutdownHandle {
+    fn drop(&mut self) {
+        if let Some(sender) = self.tx.take() {
+            sender.send(());
+        }
+    }
 }
 
 // Where the keys are stored.
