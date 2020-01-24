@@ -54,7 +54,13 @@ impl Keyserver {
     }
 }
 
-pub fn server(addr: &SocketAddr) -> (SocketAddr, impl Future<Output = Result<(), Error>>, ShutdownHandle) {
+pub fn server(
+    addr: &SocketAddr,
+) -> (
+    SocketAddr,
+    impl Future<Output = Result<(), Error>>,
+    ShutdownHandle,
+) {
     let counter = Arc::new(AtomicUsize::new(0));
     // the function passed to make_service_fn is called once per connection
     let new_service = make_service_fn(move |_socket| {
