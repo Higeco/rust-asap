@@ -1,25 +1,22 @@
-extern crate hyper;
-extern crate reqwest;
-extern crate tokio_threadpool;
-
+use std::convert::Infallible;
 use std::fs;
+use std::future::Future;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use hyper::rt::Future;
-use hyper::service::service_fn_ok;
+use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Error, Method, Request, Response, Server, StatusCode};
-use tokio_threadpool::ThreadPool;
+use tokio::sync::oneshot;
 
 /// Keyserver that can be used for testing. Shuts down when dropped.
 pub struct Keyserver {
     url: String,
-    // As long as the ThreadPool is alive, the server is running.
+    // As long as the ShutdownHandle is alive, the server is running.
     // Dropping it shuts down the server.
-    _thread_pool: ThreadPool,
+    _handle: ShutdownHandle,
 }
 
 impl Keyserver {
@@ -30,13 +27,16 @@ impl Keyserver {
 
     pub fn start_on_port(port: u16) -> Keyserver {
         let addr = ([127, 0, 0, 1], port).into();
-        let thread_pool = ThreadPool::new();
-        let (bound_addr, server) = server(&addr);
-        thread_pool.spawn(server.map_err(|e| eprintln!("server error: {}", e)));
+        let (bound_addr, server, shutdown_handle) = server(&addr);
+        tokio::spawn(async {
+            server
+                .await
+                .unwrap_or_else(|e| eprintln!("server error: {}", e))
+        });
         let url = format!("http://localhost:{}/", bound_addr.port());
         Keyserver {
             url,
-            _thread_pool: thread_pool,
+            _handle: shutdown_handle,
         }
     }
 
@@ -44,31 +44,62 @@ impl Keyserver {
         &self.url
     }
 
-    pub fn count(&self) -> String {
+    pub async fn count(&self) -> String {
         reqwest::get(&format!("{}count", self.url()))
+            .await
             .unwrap()
             .text()
+            .await
             .unwrap()
     }
 }
 
-pub fn server(addr: &SocketAddr) -> (SocketAddr, impl Future<Item = (), Error = Error>) {
+pub fn server(
+    addr: &SocketAddr,
+) -> (
+    SocketAddr,
+    impl Future<Output = Result<(), Error>>,
+    ShutdownHandle,
+) {
     let counter = Arc::new(AtomicUsize::new(0));
-
-    let new_service = move || {
+    // the function passed to make_service_fn is called once per connection
+    let new_service = make_service_fn(move |_socket| {
         let counter = counter.clone();
-        service_fn_ok(move |r| service(r, &counter))
-    };
+        async {
+            // the function passed to make_service is called once per connection
+            Ok::<_, Infallible>(service_fn(move |r| {
+                let counter = counter.clone();
+                async move { Ok::<_, Infallible>(service(r, &counter).await) }
+            }))
+        }
+    });
+
+    let (tx, rx) = oneshot::channel::<()>();
 
     let server = Server::bind(addr).serve(new_service);
     let local_addr = server.local_addr();
-    (local_addr, server)
+    let server = server.with_graceful_shutdown(async {
+        rx.await.ok();
+    });
+    (local_addr, server, ShutdownHandle { tx: Some(tx) })
+}
+
+pub struct ShutdownHandle {
+    tx: Option<oneshot::Sender<()>>,
+}
+
+impl Drop for ShutdownHandle {
+    fn drop(&mut self) {
+        if let Some(sender) = self.tx.take() {
+            sender.send(());
+        }
+    }
 }
 
 // Where the keys are stored.
 const KEYS_PATH: &str = "support/keys/";
 
-fn service(request: Request<Body>, counter: &AtomicUsize) -> Response<Body> {
+async fn service(request: Request<Body>, counter: &AtomicUsize) -> Response<Body> {
     match (request.method(), request.uri().path()) {
         (&Method::GET, "/count") => {
             Response::new(Body::from(counter.load(Ordering::Relaxed).to_string()))

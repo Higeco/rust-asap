@@ -16,6 +16,7 @@ use asap::generator::Generator;
 use asap::validator::Validator;
 use bencher::Bencher;
 use std::collections::HashMap;
+use tokio::runtime::Runtime;
 
 // A private key to use to sign the tokens.
 const PRIVATE_KEY_01: &[u8] = include_bytes!("../support/keys/service01/1530402390-private.der");
@@ -82,12 +83,17 @@ fn speed_of_validating_tokens(b: &mut Bencher) {
     let generator = default_generator();
     let token = generator.token(default_aud(), None).unwrap();
 
-    let keyserver = Keyserver::start();
+    let mut rt = Runtime::new().unwrap();
+    let keyserver = rt.block_on(async { Keyserver::start() });
     let validator = Validator::builder(keyserver.url().to_string(), ISS_01.to_string()).build();
 
     // Validate once to cache the public key:
-    validator.decode(&token, &vec![ISS_01]).unwrap();
-    b.iter(|| validator.decode(&token, &vec![ISS_01]).unwrap());
+    rt.block_on(validator.decode(&token, &vec![ISS_01]))
+        .unwrap();
+    b.iter(|| {
+        rt.block_on(validator.decode(&token, &vec![ISS_01]))
+            .unwrap()
+    });
 }
 
 fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {

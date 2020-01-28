@@ -117,38 +117,40 @@ fn teardown_env() {
  * That means they can be run in parallel.
  */
 
-#[test]
-fn keyserver_works() {
+#[tokio::test]
+async fn keyserver_works() {
     // Count should start at 0.
     let keyserver = Keyserver::start();
-    assert_eq!(keyserver.count(), "0");
+    assert_eq!(keyserver.count().await, "0");
 
     // Make 100 requests.
     for _ in 0..100 {
-        reqwest::get(&format!("{}{}", keyserver.url(), KID_01)).unwrap();
+        reqwest::get(&format!("{}{}", keyserver.url(), KID_01))
+            .await
+            .unwrap();
     }
-    assert_eq!(keyserver.count(), "100");
+    assert_eq!(keyserver.count().await, "100");
 }
 
-#[test]
-fn it_works() {
+#[tokio::test]
+async fn it_works() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
     let validator = get_validator_builder(keyserver.url()).build();
 
     // Test with no extra claims.
     let token = generator.token(default_aud(), None).unwrap();
-    let token_data = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let token_data = validator.decode(&token, &vec![ISS_01]).await.unwrap();
     validate_claims(token_data, default_aud(), None);
 
     // Test with extra claims.
     let token = generator.token(default_aud(), mock_extra_claims()).unwrap();
-    let token_data = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let token_data = validator.decode(&token, &vec![ISS_01]).await.unwrap();
     validate_claims(token_data, default_aud(), mock_extra_claims());
 }
 
-#[test]
-fn instantiates_from_environment() {
+#[tokio::test]
+async fn instantiates_from_environment() {
     let keyserver = Keyserver::start();
 
     // Stand from env
@@ -157,7 +159,7 @@ fn instantiates_from_environment() {
         let generator = Generator::from_env().unwrap();
         let validator = Validator::from_env().unwrap().build();
         let token = generator.token(default_aud(), mock_extra_claims()).unwrap();
-        let token_data = validator.decode(&token, &vec![ISS_01]).unwrap();
+        let token_data = validator.decode(&token, &vec![ISS_01]).await.unwrap();
         validate_claims(token_data, default_aud(), mock_extra_claims());
         teardown_env()
     }
@@ -172,14 +174,14 @@ fn instantiates_from_environment() {
         let generator = Generator::from_env().unwrap();
         let validator = Validator::from_env().unwrap().build();
         let token = generator.token(default_aud(), mock_extra_claims()).unwrap();
-        let token_data = validator.decode(&token, &vec![ISS_01]).unwrap();
+        let token_data = validator.decode(&token, &vec![ISS_01]).await.unwrap();
         validate_claims(token_data, default_aud(), mock_extra_claims());
         teardown_env()
     }
 }
 
-#[test]
-fn validates_nbf_is_after_current_time() {
+#[tokio::test]
+async fn validates_nbf_is_after_current_time() {
     let keyserver = Keyserver::start();
 
     let now = Utc::now().timestamp();
@@ -192,7 +194,7 @@ fn validates_nbf_is_after_current_time() {
         extra_claims.insert("nbf".to_string(), json!(now + 30));
 
         let token = generator.token(default_aud(), Some(extra_claims)).unwrap();
-        match validator.decode(&token, &vec![ISS_01]) {
+        match validator.decode(&token, &vec![ISS_01]).await {
             Ok(_) => panic!("Validation should fail."),
             Err(e) => assert!(format!("{}", e).starts_with("Immature jwt signature")),
         }
@@ -203,12 +205,12 @@ fn validates_nbf_is_after_current_time() {
         let mut extra_claims = HashMap::new();
         extra_claims.insert("nbf".to_string(), json!(now - 30));
         let token = generator.token(default_aud(), Some(extra_claims)).unwrap();
-        let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
+        let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
     }
 }
 
-#[test]
-fn validates_exp_is_before_current_time() {
+#[tokio::test]
+async fn validates_exp_is_before_current_time() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
     let validator = get_validator_builder(keyserver.url()).build();
@@ -219,26 +221,26 @@ fn validates_exp_is_before_current_time() {
     thread::sleep(Duration::from_secs(2));
 
     // Validation should fail since `exp` is before current time.
-    match validator.decode(&token, &vec![ISS_01]) {
+    match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert!(format!("{}", e).starts_with("Expired jwt signature")),
     }
 }
 
-#[test]
-fn validates_if_max_lifespan_is_exceeded() {
+#[tokio::test]
+async fn validates_if_max_lifespan_is_exceeded() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
     let validator = get_validator_builder(keyserver.url()).build();
 
     // Validation should succeed since `max_lifespan` is below default hard limit.
     let token = generator.token(default_aud(), None).unwrap();
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
 
     // Validation should fail since `max_lifespan` is above hard limit.
     generator.set_max_lifespan(3601);
     let token = generator.token(default_aud(), None).unwrap();
-    match validator.decode(&token, &vec![ISS_01]) {
+    match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(
             format!("{}", e),
@@ -248,8 +250,8 @@ fn validates_if_max_lifespan_is_exceeded() {
     }
 }
 
-#[test]
-fn validates_if_custom_max_lifespan_is_exceeded() {
+#[tokio::test]
+async fn validates_if_custom_max_lifespan_is_exceeded() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
     let validator = get_validator_builder(keyserver.url())
@@ -259,12 +261,12 @@ fn validates_if_custom_max_lifespan_is_exceeded() {
     // Validation should succeed since `max_lifespan` is below custom limit.
     generator.set_max_lifespan(30);
     let token = generator.token(default_aud(), None).unwrap();
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
 
     // Validation should fail since `max_lifespan` is above custom limit.
     generator.set_max_lifespan(120);
     let token = generator.token(default_aud(), None).unwrap();
-    match validator.decode(&token, &vec![ISS_01]) {
+    match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(
             format!("{}", e),
@@ -274,20 +276,20 @@ fn validates_if_custom_max_lifespan_is_exceeded() {
     }
 }
 
-#[test]
-fn validates_if_encounters_unrecognized_audience() {
+#[tokio::test]
+async fn validates_if_encounters_unrecognized_audience() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
     let validator = get_validator_builder(keyserver.url()).build();
 
     // Should succeed since `Claims::default().aud = ISS_01`.
     let token = generator.token(default_aud(), None).unwrap();
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
 
     // Should fail since audience does not match resource server's audience.
     let aud = Aud::One("not-whitelisted".to_string());
     let token = generator.token(aud, None).unwrap();
-    match validator.decode(&token, &vec![ISS_01]) {
+    match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(
             format!("{}", e),
@@ -297,8 +299,8 @@ fn validates_if_encounters_unrecognized_audience() {
     }
 }
 
-#[test]
-fn works_with_aud_as_vec() {
+#[tokio::test]
+async fn works_with_aud_as_vec() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
     let validator = get_validator_builder(keyserver.url()).build();
@@ -306,12 +308,12 @@ fn works_with_aud_as_vec() {
     // Should succeed since claims vec contains `ISS_01`.
     let aud = Aud::Many(vec!["foo".to_string(), ISS_01.to_string()]);
     let token = generator.token(aud, None).unwrap();
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
 
     // Should fail since audience does not contain `ISS_01`.
     let aud = Aud::Many(vec!["foo".to_string(), "bar".to_string()]);
     let token = generator.token(aud, None).unwrap();
-    match validator.decode(&token, &vec![ISS_01]) {
+    match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(
             format!("{}", e),
@@ -321,19 +323,19 @@ fn works_with_aud_as_vec() {
     }
 }
 
-#[test]
-fn works_with_aud_as_string() {
+#[tokio::test]
+async fn works_with_aud_as_string() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
     let validator = get_validator_builder(keyserver.url()).build();
 
     // Should succeed since whitelisted_issuers contains `ISS_01`.
     let token = generator.token(default_aud(), None).unwrap();
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
 
     // Should fail since whitelisted_issuers doesn't contain `ISS_01`.
     let token = generator.token(default_aud(), None).unwrap();
-    match validator.decode(&token, &vec!["foobar"]) {
+    match validator.decode(&token, &vec!["foobar"]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(
             format!("{}", e),
@@ -343,8 +345,8 @@ fn works_with_aud_as_string() {
     }
 }
 
-#[test]
-fn iss_is_assumed_if_sub_is_undefined() {
+#[tokio::test]
+async fn iss_is_assumed_if_sub_is_undefined() {
     let keyserver = Keyserver::start();
 
     let mut extra_claims = HashMap::new();
@@ -362,10 +364,11 @@ fn iss_is_assumed_if_sub_is_undefined() {
     // Validation should succeed with `sub` defined (`ISS_02`).
     let _ = validator
         .decode(&token_with_sub, &whitelisted_issuers)
+        .await
         .unwrap();
 
     // Validation should fail without it (since `iss` is assumed).
-    match validator.decode(&token_no_sub, &whitelisted_issuers) {
+    match validator.decode(&token_no_sub, &whitelisted_issuers).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(
             format!("{}", e),
@@ -375,8 +378,8 @@ fn iss_is_assumed_if_sub_is_undefined() {
     }
 }
 
-#[test]
-fn validates_kid_is_owned_by_isser() {
+#[tokio::test]
+async fn validates_kid_is_owned_by_isser() {
     let keyserver = Keyserver::start();
     let validator = get_validator_builder(keyserver.url()).build();
 
@@ -384,7 +387,7 @@ fn validates_kid_is_owned_by_isser() {
     // - `default_generator()` has `iss = "service01"` and `kid = "service01/..."`
     let generator = default_generator();
     let token = generator.token(default_aud(), None).unwrap();
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
 
     // This should fail since now `kid` does not start with `$iss/`.
     let generator = Generator::new(
@@ -393,7 +396,7 @@ fn validates_kid_is_owned_by_isser() {
         PRIVATE_KEY_01.to_vec(),
     );
     let token = generator.token(default_aud(), None).unwrap();
-    match validator.decode(&token, &vec![ISS_01]) {
+    match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => {
             assert_eq!(format!("{}", e), "JWT header did not contain a valid `kid` claim. \
@@ -403,8 +406,8 @@ fn validates_kid_is_owned_by_isser() {
     }
 }
 
-#[test]
-fn it_rejects_duplicate_jti_claims() {
+#[tokio::test]
+async fn it_rejects_duplicate_jti_claims() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
 
@@ -416,21 +419,21 @@ fn it_rejects_duplicate_jti_claims() {
     let token = generator.token(default_aud(), None).unwrap();
 
     // First token (first `jti` seen) should be successful.
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
 
     // Reusing the same token should fail (same `jti`).
-    match validator.decode(&token, &vec![ISS_01]) {
+    match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert!(format!("{}", e).starts_with("Duplicate `jti` encountered: ")),
     }
 
     // A new token (different `jti`) should be successful.
     let token = generator.token(default_aud(), None).unwrap();
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
 }
 
-#[test]
-fn it_fails_with_wrong_public_key() {
+#[tokio::test]
+async fn it_fails_with_wrong_public_key() {
     let keyserver = Keyserver::start();
     // Give the wrong `kid` for the `private_key` used.
     let generator = Generator::new(
@@ -441,14 +444,14 @@ fn it_fails_with_wrong_public_key() {
     let validator = get_validator_builder(keyserver.url()).build();
 
     let token = generator.token(default_aud(), None).unwrap();
-    match validator.decode(&token, &vec![ISS_01]) {
+    match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "invalid signature"),
     }
 }
 
-#[test]
-fn it_fails_with_no_public_key() {
+#[tokio::test]
+async fn it_fails_with_no_public_key() {
     let keyserver = Keyserver::start();
     let generator = Generator::new(
         ISS_01.to_string(),
@@ -458,14 +461,14 @@ fn it_fails_with_no_public_key() {
     let validator = get_validator_builder(keyserver.url()).build();
 
     let token = generator.token(default_aud(), None).unwrap();
-    match validator.decode(&token, &vec![ISS_01]) {
+    match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(format!("{}", e), "Failed to retrieve public key from keyserver: \"Failed to fetch a key from any keyserver\"")
     }
 }
 
-#[test]
-fn it_uses_the_fallback_keyserver() {
+#[tokio::test]
+async fn it_uses_the_fallback_keyserver() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
 
@@ -477,12 +480,12 @@ fn it_uses_the_fallback_keyserver() {
         .build();
 
     let token = generator.token(default_aud(), None).unwrap();
-    let token_data = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let token_data = validator.decode(&token, &vec![ISS_01]).await.unwrap();
     validate_claims(token_data, default_aud(), None);
 }
 
-#[test]
-fn it_fetches_key_from_cache() {
+#[tokio::test]
+async fn it_fetches_key_from_cache() {
     let server = Keyserver::start();
 
     let generator = default_generator();
@@ -490,14 +493,14 @@ fn it_fetches_key_from_cache() {
     let token = generator.token(default_aud(), None).unwrap();
 
     // Requesting the same `kid_01` twice should only result in 1 request.
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
-    assert_eq!(server.count(), "1");
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
-    assert_eq!(server.count(), "1");
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
+    assert_eq!(server.count().await, "1");
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
+    assert_eq!(server.count().await, "1");
 }
 
-#[test]
-fn it_does_not_fetch_expired_key_from_cache() {
+#[tokio::test]
+async fn it_does_not_fetch_expired_key_from_cache() {
     let server = Keyserver::start();
 
     let generator = default_generator();
@@ -509,14 +512,14 @@ fn it_does_not_fetch_expired_key_from_cache() {
         .build();
 
     // The expired `kid_01` should be requested again = 2 requests.
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
-    assert_eq!(server.count(), "1");
-    let _ = validator.decode(&token, &vec![ISS_01]).unwrap();
-    assert_eq!(server.count(), "2");
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
+    assert_eq!(server.count().await, "1");
+    let _ = validator.decode(&token, &vec![ISS_01]).await.unwrap();
+    assert_eq!(server.count().await, "2");
 }
 
-#[test]
-fn it_allows_extra_claims() {
+#[tokio::test]
+async fn it_allows_extra_claims() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
     let validator = get_validator_builder(keyserver.url()).build();
@@ -528,7 +531,7 @@ fn it_allows_extra_claims() {
     extra_claims.insert("baz".to_string(), json!(["baz", "bop"]));
 
     let token = generator.token(default_aud(), Some(extra_claims)).unwrap();
-    let token_data = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let token_data = validator.decode(&token, &vec![ISS_01]).await.unwrap();
 
     let decoded_extra_claims = token_data.claims.extra_claims.unwrap();
     assert_eq!(decoded_extra_claims.get("foo").unwrap(), &json!("foo"));
@@ -539,8 +542,8 @@ fn it_allows_extra_claims() {
     );
 }
 
-#[test]
-fn it_does_not_override_required_claims() {
+#[tokio::test]
+async fn it_does_not_override_required_claims() {
     let keyserver = Keyserver::start();
     let generator = default_generator();
     let validator = get_validator_builder(keyserver.url()).build();
@@ -552,7 +555,7 @@ fn it_does_not_override_required_claims() {
     }
 
     let token = generator.token(default_aud(), Some(extra_claims)).unwrap();
-    let token_data = validator.decode(&token, &vec![ISS_01]).unwrap();
+    let token_data = validator.decode(&token, &vec![ISS_01]).await.unwrap();
 
     // Test that none of the required claims were overridden.
     assert!(token_data.claims.aud != Aud::One("aud".to_string()));
@@ -634,8 +637,8 @@ fn it_regenerates_cached_tokens_when_they_are_different() {
     assert!(token_1 != token_2);
 }
 
-#[test]
-fn it_rejects_unsigned_tokens() {
+#[tokio::test]
+async fn it_rejects_unsigned_tokens() {
     // Manually create a JWT without a signature nor an "alg" in the header.
     let header = base64::encode(
         &serde_json::to_string(&json!({
@@ -651,13 +654,13 @@ fn it_rejects_unsigned_tokens() {
     let validator = get_validator_builder(keyserver.url()).build();
 
     // Validate without signature.
-    match validator.decode(&token, &vec![ISS_01]) {
+    match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!("invalid token", format!("{}", e)),
     }
 
     // Validate with empty signature.
-    match validator.decode(&(token + "."), &vec![ISS_01]) {
+    match validator.decode(&(token + "."), &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!(
             "JSON error: missing field `alg` at line 1 column 53",
@@ -666,8 +669,8 @@ fn it_rejects_unsigned_tokens() {
     }
 }
 
-#[test]
-fn it_rejects_tokens_with_missing_signatures() {
+#[tokio::test]
+async fn it_rejects_tokens_with_missing_signatures() {
     fn split_two(token: String) -> (String, String) {
         let mut i = token.rsplitn(2, '.');
         match (i.next(), i.next(), i.next()) {
@@ -687,20 +690,23 @@ fn it_rejects_tokens_with_missing_signatures() {
     let validator = get_validator_builder(keyserver.url()).build();
 
     // Try to validate without signature.
-    match validator.decode(&signing_input, &vec![ISS_01]) {
+    match validator.decode(&signing_input, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!("invalid token", format!("{}", e)),
     }
 
     // Try to validate with an empty signature.
-    match validator.decode(&(signing_input.to_string() + "."), &vec![ISS_01]) {
+    match validator
+        .decode(&(signing_input.to_string() + "."), &vec![ISS_01])
+        .await
+    {
         Ok(_) => panic!("Validation should fail."),
         Err(e) => assert_eq!("invalid signature", format!("{}", e)),
     }
 }
 
-#[test]
-fn it_rejects_tokens_signed_with_unsupported_alg() {
+#[tokio::test]
+async fn it_rejects_tokens_signed_with_unsupported_alg() {
     let unsupported_algs = vec![
         jwt::Algorithm::HS256,
         jwt::Algorithm::HS384,
@@ -717,7 +723,7 @@ fn it_rejects_tokens_signed_with_unsupported_alg() {
 
         let keyserver = Keyserver::start();
         let validator = get_validator_builder(keyserver.url()).build();
-        match validator.decode(&token, &vec![ISS_01]) {
+        match validator.decode(&token, &vec![ISS_01]).await {
             Ok(_) => panic!("Validation should fail."),
             Err(e) => {
                 let err_msg = format!("{}", e);
