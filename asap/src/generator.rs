@@ -70,7 +70,7 @@
 //! ```
 
 use crate::claims::{Aud, Claims, ClaimsBuilder, ExtraClaims};
-use crate::jwt;
+use jwt;
 use lru_time_cache::LruCache;
 use std::env;
 use std::sync::{Arc, RwLock};
@@ -338,7 +338,12 @@ impl Generator {
     }
 
     fn generate_token(header: &jwt::Header, claims: &Claims, private_key: &[u8]) -> Result<String> {
-        let token = jwt::encode(&header, &claims, &private_key).sync()?;
+        let token = jwt::encode(
+            &header,
+            &claims,
+            &jwt::EncodingKey::from_rsa_der(&private_key),
+        )
+        .sync()?;
         Ok(token)
     }
 

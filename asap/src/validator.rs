@@ -493,7 +493,12 @@ impl Validator {
         let public_key = self.get_public_key(&kid).await?;
 
         // Decode the token (this also validates its signature).
-        let data = jwt::decode::<Claims>(token, &public_key, &self.jwt_validator).sync()?;
+        let data = jwt::decode::<Claims>(
+            token,
+            &jwt::DecodingKey::from_rsa_der(&public_key),
+            &self.jwt_validator,
+        )
+        .sync()?;
 
         // Ensure the token is valid (according to the ASAP specification).
         //
