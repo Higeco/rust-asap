@@ -398,11 +398,12 @@ async fn validates_kid_is_owned_by_isser() {
     let token = generator.token(default_aud(), None).unwrap();
     match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => {
-            assert_eq!(format!("{}", e), "JWT header did not contain a valid `kid` claim. \
+        Err(e) => assert_eq!(
+            format!("{}", e),
+            "JWT header did not contain a valid `kid` claim. \
             As per ASAP spec, the `kid` claim must start with \"$iss/\" where $iss is the issuer \
-            (kid: \"service01/1530402390-public.der\", iss: \"service02\")")
-        }
+            (kid: \"service01/1530402390-public.der\", iss: \"service02\")"
+        ),
     }
 }
 
@@ -446,7 +447,7 @@ async fn it_fails_with_wrong_public_key() {
     let token = generator.token(default_aud(), None).unwrap();
     match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!(format!("{}", e), "invalid signature"),
+        Err(e) => assert_eq!(format!("{}", e), "InvalidSignature"),
     }
 }
 
@@ -656,7 +657,7 @@ async fn it_rejects_unsigned_tokens() {
     // Validate without signature.
     match validator.decode(&token, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("invalid token", format!("{}", e)),
+        Err(e) => assert_eq!("InvalidToken", format!("{}", e)),
     }
 
     // Validate with empty signature.
@@ -683,7 +684,12 @@ async fn it_rejects_tokens_with_missing_signatures() {
     header.kid = Some(KID_01.to_string());
 
     // Remove signature from token.
-    let token = jwt::encode(&header, &mock_claims(), &PRIVATE_KEY_01.to_vec()).unwrap();
+    let token = jwt::encode(
+        &header,
+        &mock_claims(),
+        &jwt::EncodingKey::from_rsa_der(&PRIVATE_KEY_01.to_vec()),
+    )
+    .unwrap();
     let (_signature, signing_input) = split_two(token);
 
     let keyserver = Keyserver::start();
@@ -692,7 +698,7 @@ async fn it_rejects_tokens_with_missing_signatures() {
     // Try to validate without signature.
     match validator.decode(&signing_input, &vec![ISS_01]).await {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("invalid token", format!("{}", e)),
+        Err(e) => assert_eq!("InvalidToken", format!("{}", e)),
     }
 
     // Try to validate with an empty signature.
@@ -701,25 +707,41 @@ async fn it_rejects_tokens_with_missing_signatures() {
         .await
     {
         Ok(_) => panic!("Validation should fail."),
-        Err(e) => assert_eq!("invalid signature", format!("{}", e)),
+        Err(e) => assert_eq!("InvalidSignature", format!("{}", e)),
     }
 }
 
 #[tokio::test]
 async fn it_rejects_tokens_signed_with_unsupported_alg() {
     let unsupported_algs = vec![
-        jwt::Algorithm::HS256,
-        jwt::Algorithm::HS384,
-        jwt::Algorithm::HS512,
-        jwt::Algorithm::RS384,
-        jwt::Algorithm::RS512,
+        (
+            jwt::Algorithm::HS256,
+            jwt::EncodingKey::from_secret(b"some-secret"),
+        ),
+        (
+            jwt::Algorithm::HS384,
+            jwt::EncodingKey::from_secret(b"some-secret"),
+        ),
+        (
+            jwt::Algorithm::HS512,
+            jwt::EncodingKey::from_secret(b"some-secret"),
+        ),
+        (
+            jwt::Algorithm::RS384,
+            jwt::EncodingKey::from_rsa_der(&PRIVATE_KEY_01.to_vec()),
+        ),
+        (
+            jwt::Algorithm::RS512,
+            jwt::EncodingKey::from_rsa_der(&PRIVATE_KEY_01.to_vec()),
+        ),
     ];
 
-    for alg in unsupported_algs {
+    for (alg, key) in unsupported_algs {
+        println!("{:?}", alg);
         let mut header = jwt::Header::new(alg);
         header.kid = Some(KID_01.to_string());
 
-        let token = jwt::encode(&header, &mock_claims(), &PRIVATE_KEY_01.to_vec()).unwrap();
+        let token = jwt::encode(&header, &mock_claims(), &key).unwrap();
 
         let keyserver = Keyserver::start();
         let validator = get_validator_builder(keyserver.url()).build();
@@ -727,17 +749,7 @@ async fn it_rejects_tokens_signed_with_unsupported_alg() {
             Ok(_) => panic!("Validation should fail."),
             Err(e) => {
                 let err_msg = format!("{}", e);
-                match alg {
-                    // HSXXX signatures fail to be parsed  -> "Invalid signature"
-                    jwt::Algorithm::HS256 | jwt::Algorithm::HS384 | jwt::Algorithm::HS512 => {
-                        assert_eq!(err_msg, "invalid signature")
-                    }
-                    // RSXXX signatures fail to be decoded -> "Invalid Algorithm"
-                    jwt::Algorithm::RS384 | jwt::Algorithm::RS512 => {
-                        assert_eq!(err_msg, "algorithms don't match")
-                    }
-                    _ => unreachable!(),
-                }
+                assert_eq!(err_msg, "InvalidAlgorithm")
             }
         }
     }

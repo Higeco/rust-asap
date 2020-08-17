@@ -120,7 +120,14 @@ fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
     };
 
     let public_key: &[u8] = include_bytes!("../support/keys/service01/1530402390-public.der");
-    b.iter(|| jwt::decode::<Claims>(&token, &public_key, &jwt_validator).unwrap());
+    b.iter(|| {
+        jwt::decode::<Claims>(
+            &token,
+            &jwt::DecodingKey::from_rsa_der(&public_key),
+            &jwt_validator,
+        )
+        .unwrap()
+    });
 }
 
 fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {

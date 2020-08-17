@@ -9,6 +9,6 @@ repository = "https://bitbucket.org/atlassianlabs/rust-asap/"
 description = "This is a dev-dependency of rust-asap."
 
 [dependencies]
-hyper = "0.13"
-tokio = { version = "0.2", features = ["full"] }
-reqwest = "0.10"
+hyper = "0.13.7"
+tokio = { version = "0.2.22", features = ["full"] }
+reqwest = "0.10.7"
