@@ -91,7 +91,7 @@ pub struct ShutdownHandle {
 impl Drop for ShutdownHandle {
     fn drop(&mut self) {
         if let Some(sender) = self.tx.take() {
-            sender.send(());
+            let _ = sender.send(());
         }
     }
 }

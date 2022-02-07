@@ -1,4 +1,3 @@
-use pem;
 use rand::distributions::Alphanumeric;
 use rand::{self, Rng};
 use serde::de::DeserializeOwned;
@@ -43,6 +42,7 @@ pub fn generate_jti() -> String {
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(20)
+        .map(char::from)
         .collect::<String>()
 }
 

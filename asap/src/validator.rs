@@ -399,7 +399,7 @@ impl Validator {
             // internal cache mutably. We won't be able to remove anything from
             // the cache if this ref is still alive.
             {
-                let cached_key = get_key_from_cache(&mut key_cache, self.key_cache_duration, &kid);
+                let cached_key = get_key_from_cache(&mut key_cache, self.key_cache_duration, kid);
                 if cached_key.is_ok() {
                     return cached_key;
                 }
@@ -416,7 +416,7 @@ impl Validator {
 
         // Otherwise, fetch the public key from the keyserver(s).
         for url in &self.keyserver_urls {
-            if let Ok(key) = self.get_key_from_server(&url, &kid).await {
+            if let Ok(key) = self.get_key_from_server(url, kid).await {
                 return Ok(key);
             }
         }
@@ -487,7 +487,7 @@ impl Validator {
         let kid = header
             .kid
             .clone()
-            .ok_or_else(|| ValidatorError::NoKIDFound(header))?;
+            .ok_or(ValidatorError::NoKIDFound(header))?;
 
         // Retreive the public key (from cache or the keyserver).
         let public_key = self.get_public_key(&kid).await?;
@@ -535,7 +535,7 @@ impl Validator {
     ///
     /// !!! WARNING !!!
     pub fn dangerous_unsafe_decode(&self, token: &str) -> Result<TokenData<Claims>> {
-        Ok(jwt::dangerous_unsafe_decode::<Claims>(token).sync()?)
+        Ok(jwt::dangerous_insecure_decode::<Claims>(token).sync()?)
     }
 
     // Validates the JWT token as per the ASAP specification.

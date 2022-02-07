@@ -83,17 +83,13 @@ fn speed_of_validating_tokens(b: &mut Bencher) {
     let generator = default_generator();
     let token = generator.token(default_aud(), None).unwrap();
 
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
     let keyserver = rt.block_on(async { Keyserver::start() });
     let validator = Validator::builder(keyserver.url().to_string(), ISS_01.to_string()).build();
 
     // Validate once to cache the public key:
-    rt.block_on(validator.decode(&token, &vec![ISS_01]))
-        .unwrap();
-    b.iter(|| {
-        rt.block_on(validator.decode(&token, &vec![ISS_01]))
-            .unwrap()
-    });
+    rt.block_on(validator.decode(&token, &[ISS_01])).unwrap();
+    b.iter(|| rt.block_on(validator.decode(&token, &[ISS_01])).unwrap());
 }
 
 fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
@@ -123,7 +119,7 @@ fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
     b.iter(|| {
         jwt::decode::<Claims>(
             &token,
-            &jwt::DecodingKey::from_rsa_der(&public_key),
+            &jwt::DecodingKey::from_rsa_der(public_key),
             &jwt_validator,
         )
         .unwrap()
