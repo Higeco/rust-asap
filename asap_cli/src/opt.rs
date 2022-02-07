@@ -2,10 +2,7 @@ use clap;
 use std::path::PathBuf;
 
 #[derive(StructOpt, Debug)]
-#[structopt(
-    after_help = "For issues, see: https://bitbucket.org/atlassianlabs/rust-asap/issues",
-    setting = clap::AppSettings::ColoredHelp
-)]
+#[structopt(after_help = "For issues, see: https://bitbucket.org/atlassianlabs/rust-asap/issues")]
 /// Simple and easy ASAP tokens on the commands line.
 pub struct Opt {
     /// Path of the configuration file to use when generating tokens
@@ -36,10 +33,10 @@ pub struct Opt {
 #[derive(StructOpt, Debug, PartialEq)]
 pub enum SubCommand {
     /// Create a config file that may be used when generating tokens
-    #[structopt(name = "init", setting = clap::AppSettings::ColoredHelp)]
+    #[structopt(name = "init")]
     Init,
     /// Generate and print an ASAP token
-    #[structopt(name = "token", setting = clap::AppSettings::ColoredHelp)]
+    #[structopt(name = "token")]
     Token {
         /// Print the token as an Authorization header value
         #[structopt(long = "auth-header", short = "b")]
@@ -51,8 +48,8 @@ pub enum SubCommand {
     /// Use `curl` with an auto-injected authorization header
     #[structopt(
         name = "curl",
-        setting = clap::AppSettings::TrailingVarArg,
-        setting = clap::AppSettings::AllowLeadingHyphen
+        setting = structopt::clap::AppSettings::TrailingVarArg,
+        setting = structopt::clap::AppSettings::AllowLeadingHyphen
     )]
     Curl { args: Vec<String> },
 }
