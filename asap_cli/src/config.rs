@@ -1,7 +1,5 @@
 use asap::claims::{Aud, ExtraClaims};
 use directories::ProjectDirs;
-use pem;
-use serde_json;
 use std::env;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -48,8 +46,7 @@ impl Config {
 
         // Custom claims supplied on the command line.
         if let Some(ref audience) = opt.audience {
-            let aud: Aud =
-                serde_json::from_str(&audience).expect("failed to parse custom audience");
+            let aud: Aud = serde_json::from_str(audience).expect("failed to parse custom audience");
             config.audience = aud;
         }
         if let Some(issuer) = opt.issuer.as_ref() {

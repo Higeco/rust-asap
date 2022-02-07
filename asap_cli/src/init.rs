@@ -1,6 +1,5 @@
 use crate::config::{self, Config};
 use asap::claims::Aud;
-use serde_json;
 use std::env;
 use std::fs::{create_dir_all, File};
 use std::io::{stdin, stdout, Write};

@@ -1,4 +1,3 @@
-use pem;
 use rand::distributions::Alphanumeric;
 use rand::{self, Rng};
 use serde::de::DeserializeOwned;

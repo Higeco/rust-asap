@@ -1,4 +1,3 @@
-use clap;
 use std::path::PathBuf;
 
 #[derive(StructOpt, Debug)]

@@ -339,9 +339,9 @@ impl Generator {
 
     fn generate_token(header: &jwt::Header, claims: &Claims, private_key: &[u8]) -> Result<String> {
         let token = jwt::encode(
-            &header,
+            header,
             &claims,
-            &jwt::EncodingKey::from_rsa_der(&private_key),
+            &jwt::EncodingKey::from_rsa_der(private_key),
         )
         .sync()?;
         Ok(token)
