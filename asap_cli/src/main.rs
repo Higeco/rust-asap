@@ -10,8 +10,6 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
-#[macro_use]
-extern crate structopt;
 
 mod config;
 mod curl;
@@ -23,7 +21,7 @@ mod token;
 use crate::config::{Config, ConfigError};
 use crate::errors::Result;
 use crate::opt::{Opt, SubCommand};
-use structopt::StructOpt;
+use clap::Parser;
 
 fn check_result<T>(result: Result<T>) {
     match result {
@@ -36,7 +34,7 @@ fn main() {
     // Setup `human_panic`'s error handling.
     setup_panic!();
 
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
     if opt.subcommand == SubCommand::Init {
         check_result(init::run())
     } else {
