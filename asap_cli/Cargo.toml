@@ -17,8 +17,7 @@ description = "A helpful command line utility for using ASAP."
 
 [dependencies]
 asap = { path = "../asap", version = "0.10.0" }
-structopt = "0.3.26"
-clap = "3.0.14"
+clap = { version = "3.0.14", features = ["derive"] }
 directories = "4.0.1"
 human-panic = "1.0.3"
 failure = "0.1.8"
