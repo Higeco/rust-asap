@@ -2,7 +2,7 @@ extern crate asap;
 extern crate clap;
 extern crate directories;
 #[macro_use]
-extern crate failure;
+extern crate anyhow;
 #[macro_use]
 extern crate human_panic;
 extern crate pem;

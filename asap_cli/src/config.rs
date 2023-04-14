@@ -9,12 +9,12 @@ use crate::opt::Opt;
 
 pub const CONFIG_BASENAME: &str = ".asap-config";
 
-#[derive(Debug, Fail)]
+#[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[fail(display = "failed to parse config from {}: {}", _0, _1)]
+    #[error("failed to parse config from {0}: {1}")]
     CustomConfig(String, String),
 
-    #[fail(display = "failed to find configuration files: {}", _0)]
+    #[error("failed to find configuration files: {0}")]
     NotFound(String),
 }
 

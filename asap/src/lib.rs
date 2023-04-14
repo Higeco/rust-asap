@@ -103,15 +103,14 @@
 
 extern crate chrono;
 #[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
+extern crate anyhow;
 extern crate jsonwebtoken as jwt;
 extern crate lru_time_cache;
 extern crate pem;
 extern crate rand;
 extern crate reqwest;
 extern crate serde;
+extern crate thiserror;
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]
