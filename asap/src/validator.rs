@@ -188,18 +188,14 @@ impl ValidatorBuilder {
 
     /// Builds and returns a `Validator` with the configured options.
     pub fn build(&mut self) -> Validator {
-        let jwt_validator = jwt::Validation {
-            // We perform our own validation of these claims.
-            leeway: 0,
-            validate_exp: false,
-            validate_nbf: false,
-            iss: None,
-            sub: None,
-            aud: None,
-
-            // Currently, we only support the `RS256` algorithm.
-            algorithms: vec![jwt::Algorithm::RS256],
-        };
+        let mut jwt_validator = jwt::Validation::new(jwt::Algorithm::RS256);
+        jwt_validator.validate_aud = false;
+        jwt_validator.validate_exp = false;
+        jwt_validator.validate_nbf = false;
+        jwt_validator.leeway = 0;
+        jwt_validator.iss = None;
+        jwt_validator.sub = None;
+        jwt_validator.aud = None;
 
         Validator {
             leeway: self.leeway.unwrap_or(0),
@@ -524,18 +520,6 @@ impl Validator {
 
         // Return the decoded token.
         Ok(data)
-    }
-
-    /// Decodes the given token, returning both its claims and header.
-    ///
-    /// !!! WARNING !!!
-    ///
-    /// This function performs **_NO ASAP OR SIGNATURE VALIDATION_** on the
-    /// token. **Do not use this** unless you know what you are doing.
-    ///
-    /// !!! WARNING !!!
-    pub fn dangerous_unsafe_decode(&self, token: &str) -> Result<TokenData<Claims>> {
-        Ok(jwt::dangerous_insecure_decode::<Claims>(token).sync()?)
     }
 
     // Validates the JWT token as per the ASAP specification.

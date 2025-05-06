@@ -641,14 +641,18 @@ fn it_regenerates_cached_tokens_when_they_are_different() {
 #[tokio::test]
 async fn it_rejects_unsigned_tokens() {
     // Manually create a JWT without a signature nor an "alg" in the header.
-    let header = base64::encode(
+    let header = base64::encode_config(
         &serde_json::to_string(&json!({
             "typ": "JWT",
             "kid": KID_01.to_string()
         }))
         .unwrap(),
+        base64::URL_SAFE_NO_PAD,
     );
-    let body = base64::encode(&serde_json::to_string(&mock_claims()).unwrap());
+    let body = base64::encode_config(
+        &serde_json::to_string(&mock_claims()).unwrap(),
+        base64::URL_SAFE_NO_PAD,
+    );
     let token = header + "." + &body;
 
     let keyserver = Keyserver::start();
