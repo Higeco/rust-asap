@@ -9,7 +9,7 @@ use std::path::PathBuf;
 /// Simple and easy ASAP tokens on the commands line.
 pub struct Opt {
     /// Path of the configuration file to use when generating tokens
-    #[clap(long = "config", short = 'c', parse(from_os_str))]
+    #[clap(long = "config", short = 'c')]
     pub config_path: Option<PathBuf>,
 
     /// Provide extra claims to be inserted into the token
@@ -25,7 +25,7 @@ pub struct Opt {
     #[clap(long = "key-id", short = 'k')]
     pub key_id: Option<String>,
     /// Use a custom private_key (as a PEM file) for the token
-    #[clap(long = "private-key", short = 'p', parse(from_os_str))]
+    #[clap(long = "private-key", short = 'p')]
     pub private_key: Option<PathBuf>,
 
     /// The subcommand to run
@@ -49,10 +49,6 @@ pub enum SubCommand {
         full_header: bool,
     },
     /// Use `curl` with an auto-injected authorization header
-    #[clap(
-        name = "curl",
-        setting = clap::AppSettings::TrailingVarArg,
-        setting = clap::AppSettings::AllowHyphenValues
-    )]
+    #[clap(name = "curl", trailing_var_arg = true, allow_hyphen_values = true)]
     Curl { args: Vec<String> },
 }

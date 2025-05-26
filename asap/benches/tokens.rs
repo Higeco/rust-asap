@@ -105,15 +105,8 @@ fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
     let generator = default_generator();
     let token = generator.token(default_aud(), None).unwrap();
 
-    let jwt_validator = jwt::Validation {
-        leeway: 0,
-        validate_exp: false,
-        validate_nbf: false,
-        iss: None,
-        sub: None,
-        aud: None,
-        algorithms: vec![jwt::Algorithm::RS256],
-    };
+    let mut jwt_validator = jwt::Validation::new(jwt::Algorithm::RS256);
+    jwt_validator.validate_aud = false;
 
     let public_key: &[u8] = include_bytes!("../support/keys/service01/1530402390-public.der");
     b.iter(|| {
@@ -124,14 +117,6 @@ fn speed_of_validating_tokens_without_asap(b: &mut Bencher) {
         )
         .unwrap()
     });
-}
-
-fn speed_of_dangerous_unsafe_decode(b: &mut Bencher) {
-    let generator = default_generator();
-    let token = generator.token(default_aud(), None).unwrap();
-
-    let validator = Validator::builder("unused".to_string(), ISS_01.to_string()).build();
-    b.iter(|| validator.dangerous_unsafe_decode(&token).unwrap());
 }
 
 benchmark_group!(
@@ -145,6 +130,5 @@ benchmark_group!(
     validate,
     speed_of_validating_tokens,
     speed_of_validating_tokens_without_asap,
-    speed_of_dangerous_unsafe_decode
 );
 benchmark_main!(generate, validate);
