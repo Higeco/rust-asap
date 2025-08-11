@@ -108,7 +108,6 @@ extern crate jsonwebtoken as jwt;
 extern crate lru_time_cache;
 extern crate pem;
 extern crate rand;
-extern crate reqwest;
 extern crate serde;
 extern crate thiserror;
 #[macro_use]
@@ -119,5 +118,6 @@ extern crate serde_json;
 pub mod claims;
 mod errors;
 pub mod generator;
+pub mod keyserver;
 mod util;
 pub mod validator;

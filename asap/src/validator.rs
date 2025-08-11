@@ -29,21 +29,27 @@
 //! ```
 
 use crate::jwt::{self, TokenData};
-use bytes::Bytes;
 use chrono::Utc;
-use reqwest;
 use serde_json::{from_str, to_string, Map, Value};
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
-use std::env;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use crate::claims::Claims;
 use crate::errors::{Result, ResultExt, ValidatorError};
+use crate::keyserver::Keyserver;
 use crate::util::{extract_aud_from_claims, extract_claim};
 
-type PublicKeyCache = HashMap<String, (SystemTime, Bytes)>;
+#[cfg(feature = "http-keyserver")]
+use crate::keyserver::HttpKeyserver;
+
+type PublicKeyCache = HashMap<String, (SystemTime, jwt::DecodingKey)>;
+
+#[cfg(feature = "http-keyserver")]
+pub type ValidatorBuilder = GenericValidatorBuilder<HttpKeyserver>;
+#[cfg(feature = "http-keyserver")]
+pub type Validator = GenericValidator<HttpKeyserver>;
 
 /// The duration of how long the validator should cache public keys fetched
 /// from the keyserver.
@@ -57,13 +63,12 @@ pub const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(600);
 pub const DEFAULT_MAX_LIFESPAN: i64 = 60 * 60;
 
 /// Options used to configure an ASAP Validator.
-pub struct ValidatorBuilder {
+pub struct GenericValidatorBuilder<S: Keyserver> {
     /// The identifier of the resource server. Incoming ASAP tokens must include
     /// this identifier in their `aud` claim in order for the token to be valid.
     resource_server_audience: Option<String>,
-    /// A list of keyserver URLs. Each must have a trailing "/".
-    /// These are tried in order until a key is successfully returned.
-    keyserver_urls: Option<Vec<String>>,
+    /// The keyserver to fetch the public keys from.
+    keyserver: Option<S>,
     /// Since validating time fields is always a bit tricky due to clock skew,
     /// this field adds `leeway` to the `iat`, `exp` and `nbf` validation (which
     /// are measured in seconds).
@@ -93,6 +98,7 @@ pub struct ValidatorBuilder {
     cache_duration: Option<Duration>,
 }
 
+#[cfg(feature = "http-keyserver")]
 impl ValidatorBuilder {
     /// Creates a new `ValidatorBuilder`. Use this struct to easily construct
     /// a `Validator` with your chosen options.
@@ -113,60 +119,8 @@ impl ValidatorBuilder {
     ///     .build();
     /// ```
     pub fn new(keyserver_url: String, resource_server_audience: String) -> ValidatorBuilder {
-        ValidatorBuilder {
-            resource_server_audience: Some(resource_server_audience),
-            keyserver_urls: Some(vec![keyserver_url]),
-
-            leeway: None,
-            max_lifespan: None,
-            validate_kid: true,
-            validate_jti: false,
-            cache_duration: None,
-        }
-    }
-
-    /// Sets the `leeway` for the `Validator`.
-    ///
-    /// Defaults to `0`.
-    pub fn leeway(&mut self, leeway: i64) -> &mut ValidatorBuilder {
-        self.leeway = Some(leeway);
-        self
-    }
-
-    /// Sets the `max_lifespan` for the `Validator`.
-    ///
-    /// Note that while the ASAP spec defines a hard upper limit of `3600`
-    /// seconds, some uses may require a higher limit (eg: when validating
-    /// session tokens). You may use this to set a higher limit.
-    ///
-    /// Defaults to `3600` seconds.
-    pub fn max_lifespan(&mut self, max_lifespan: i64) -> &mut ValidatorBuilder {
-        self.max_lifespan = Some(max_lifespan);
-        self
-    }
-
-    /// Sets the `cache_duration` for the `Validator`.
-    ///
-    /// Defaults to `validator::DEFAULT_CACHE_DURATION`.
-    pub fn cache_duration(&mut self, cache_duration: Duration) -> &mut ValidatorBuilder {
-        self.cache_duration = Some(cache_duration);
-        self
-    }
-
-    /// Sets the `validate_kid` for the `Validator`.
-    ///
-    /// Defaults to `true`.
-    pub fn validate_kid(&mut self, validate_kid: bool) -> &mut ValidatorBuilder {
-        self.validate_kid = validate_kid;
-        self
-    }
-
-    /// Sets the `validate_jti` for the `Validator`.
-    ///
-    /// Defaults to `false`.
-    pub fn validate_jti(&mut self, validate_jti: bool) -> &mut ValidatorBuilder {
-        self.validate_jti = validate_jti;
-        self
+        let ks = HttpKeyserver::new(vec![keyserver_url]);
+        GenericValidatorBuilder::with_keyserver(ks, resource_server_audience)
     }
 
     /// Adds a fallback keyserver for the `Validator`.
@@ -182,12 +136,71 @@ impl ValidatorBuilder {
     ///     .build();
     /// ```
     pub fn fallback_keyserver(&mut self, keyserver: String) -> &mut ValidatorBuilder {
-        self.keyserver_urls.as_mut().unwrap().push(keyserver);
+        self.keyserver.as_mut().unwrap().append_url(keyserver);
+        self
+    }
+}
+
+impl<S: Keyserver> GenericValidatorBuilder<S> {
+    pub fn with_keyserver(keyserver: S, resource_server_audience: String) -> Self {
+        GenericValidatorBuilder {
+            resource_server_audience: Some(resource_server_audience),
+            keyserver: Some(keyserver),
+
+            leeway: None,
+            max_lifespan: None,
+            validate_kid: true,
+            validate_jti: false,
+            cache_duration: None,
+        }
+    }
+
+    /// Sets the `leeway` for the `Validator`.
+    ///
+    /// Defaults to `0`.
+    pub fn leeway(&mut self, leeway: i64) -> &mut Self {
+        self.leeway = Some(leeway);
+        self
+    }
+
+    /// Sets the `max_lifespan` for the `Validator`.
+    ///
+    /// Note that while the ASAP spec defines a hard upper limit of `3600`
+    /// seconds, some uses may require a higher limit (eg: when validating
+    /// session tokens). You may use this to set a higher limit.
+    ///
+    /// Defaults to `3600` seconds.
+    pub fn max_lifespan(&mut self, max_lifespan: i64) -> &mut Self {
+        self.max_lifespan = Some(max_lifespan);
+        self
+    }
+
+    /// Sets the `cache_duration` for the `Validator`.
+    ///
+    /// Defaults to `validator::DEFAULT_CACHE_DURATION`.
+    pub fn cache_duration(&mut self, cache_duration: Duration) -> &mut Self {
+        self.cache_duration = Some(cache_duration);
+        self
+    }
+
+    /// Sets the `validate_kid` for the `Validator`.
+    ///
+    /// Defaults to `true`.
+    pub fn validate_kid(&mut self, validate_kid: bool) -> &mut Self {
+        self.validate_kid = validate_kid;
+        self
+    }
+
+    /// Sets the `validate_jti` for the `Validator`.
+    ///
+    /// Defaults to `false`.
+    pub fn validate_jti(&mut self, validate_jti: bool) -> &mut Self {
+        self.validate_jti = validate_jti;
         self
     }
 
     /// Builds and returns a `Validator` with the configured options.
-    pub fn build(&mut self) -> Validator {
+    pub fn build(&mut self) -> GenericValidator<S> {
         let mut jwt_validator = jwt::Validation::new(jwt::Algorithm::RS256);
         jwt_validator.validate_aud = false;
         jwt_validator.validate_exp = false;
@@ -197,12 +210,12 @@ impl ValidatorBuilder {
         jwt_validator.sub = None;
         jwt_validator.aud = None;
 
-        Validator {
+        GenericValidator {
             leeway: self.leeway.unwrap_or(0),
             max_lifespan: max(0, self.max_lifespan.unwrap_or(DEFAULT_MAX_LIFESPAN)),
             jwt_validator,
 
-            keyserver_urls: self.keyserver_urls.take().unwrap(),
+            keyserver: self.keyserver.take().unwrap(),
             resource_server_audience: self.resource_server_audience.take().unwrap(),
 
             validate_kid: self.validate_kid,
@@ -281,7 +294,7 @@ impl ValidatorBuilder {
 /// }
 /// # }
 /// ```
-pub struct Validator {
+pub struct GenericValidator<S: Keyserver> {
     /// Whether or not the validator should check for duplicate `jti` nonces.
     pub validate_jti: bool,
     /// Whether or not the validator should check that the `kid` starts with
@@ -300,9 +313,8 @@ pub struct Validator {
     /// The max lifespan of the token (the difference between `exp` and `iat`).
     /// The ASAP spec defines a hard upper limit of one hour.
     max_lifespan: i64,
-    /// A list of keyserver URLs. Each must have a trailing "/".
-    /// These are tried in order until a key is successfully returned.
-    keyserver_urls: Vec<String>,
+    /// The keyserver used to fetch public keys.
+    keyserver: S,
     /// A hash-map used to store and check seen `jti` nonces.
     jti_seen: Arc<RwLock<HashSet<String>>>,
     /// A hash-map used for simple key-caching.
@@ -311,6 +323,7 @@ pub struct Validator {
     key_cache_duration: Duration,
 }
 
+#[cfg(feature = "http-keyserver")]
 impl Validator {
     /// Creates a builder that can be used to construct a `Validator`.
     ///
@@ -355,7 +368,8 @@ impl Validator {
     /// ```
     pub fn from_env() -> Result<ValidatorBuilder> {
         let get_env_var = |x| {
-            env::var(x).map_err(|_| format_err!("Could not find '{:?}' environment variable", x))
+            std::env::var(x)
+                .map_err(|_| format_err!("Could not find '{:?}' environment variable", x))
         };
 
         let keyserver_url = get_env_var("ASAP_KEYSERVER_URL")?;
@@ -370,51 +384,43 @@ impl Validator {
 
         Ok(vb)
     }
+}
 
-    // Fetch the public key from the keyserver by returning the response body
-    // of: `GET <server_url><kid>`.
-    async fn get_key_from_server(&self, server_url: &str, kid: &str) -> Result<Bytes> {
-        let response = reqwest::get(&format!("{}{}", server_url, kid)).await?;
-        if response.status().is_success() {
-            Ok(response.bytes().await?)
-        } else {
-            Err(ValidatorError::KeyserverError(response.status().to_string()).into())
-        }
-    }
-
+impl<S: Keyserver> GenericValidator<S> {
     // Retrieves the public key for `kid`, checking the cache and then fetching
     // the key from the keyserver if the key isn't cached.
-    async fn get_public_key(&self, kid: &str) -> Result<Bytes> {
+    async fn get_public_key(&self, kid: &str) -> Result<jwt::DecodingKey> {
         // Fetch key from cache if there's a key.
-        let mut key_cache = self
-            .key_cache
-            .write()
-            .expect("failed to acquire lock on public key cache");
-        if key_cache.contains_key(kid) {
-            // Extra scope here since `self.get_key_from_cache` borrows the
-            // internal cache mutably. We won't be able to remove anything from
-            // the cache if this ref is still alive.
-            {
-                let cached_key = get_key_from_cache(&mut key_cache, self.key_cache_duration, kid);
-                if cached_key.is_ok() {
-                    return cached_key;
-                }
-                eprintln!(
-                    "Error fetching from cache, reason: {}. \
+        {
+            let mut key_cache = self
+                .key_cache
+                .write()
+                .expect("failed to acquire lock on public key cache");
+            if key_cache.contains_key(kid) {
+                // Extra scope here since `self.get_key_from_cache` borrows the
+                // internal cache mutably. We won't be able to remove anything from
+                // the cache if this ref is still alive.
+                {
+                    let cached_key =
+                        get_key_from_cache(&mut key_cache, self.key_cache_duration, kid);
+                    if cached_key.is_ok() {
+                        return cached_key;
+                    }
+                    eprintln!(
+                        "Error fetching from cache, reason: {}. \
                      Trying keyserver...",
-                    cached_key.err().unwrap()
-                );
+                        cached_key.err().unwrap()
+                    );
+                }
+                // If there was any error fetching the key from the cache, just
+                // remove the entry from cache.
+                key_cache.remove(kid);
             }
-            // If there was any error fetching the key from the cache, just
-            // remove the entry from cache.
-            key_cache.remove(kid);
         }
 
         // Otherwise, fetch the public key from the keyserver(s).
-        for url in &self.keyserver_urls {
-            if let Ok(key) = self.get_key_from_server(url, kid).await {
-                return Ok(key);
-            }
+        if let Ok(key) = self.keyserver.get_public_key(kid).await {
+            return Ok(key);
         }
 
         Err(
@@ -476,6 +482,18 @@ impl Validator {
         token: &str,
         whitelisted_issuers: &[&str],
     ) -> Result<TokenData<Claims>> {
+        self.decode_optwl(token, Some(whitelisted_issuers)).await
+    }
+
+    pub async fn decode_without_whitelist(&self, token: &str) -> Result<TokenData<Claims>> {
+        self.decode_optwl(token, None).await
+    }
+
+    async fn decode_optwl(
+        &self,
+        token: &str,
+        whitelisted_issuers: Option<&[&str]>,
+    ) -> Result<TokenData<Claims>> {
         // First, decode the header.
         let header = jwt::decode_header(token).sync()?;
 
@@ -489,12 +507,7 @@ impl Validator {
         let public_key = self.get_public_key(&kid).await?;
 
         // Decode the token (this also validates its signature).
-        let data = jwt::decode::<Claims>(
-            token,
-            &jwt::DecodingKey::from_rsa_der(&public_key),
-            &self.jwt_validator,
-        )
-        .sync()?;
+        let data = jwt::decode::<Claims>(token, &public_key, &self.jwt_validator).sync()?;
 
         // Ensure the token is valid (according to the ASAP specification).
         //
@@ -528,7 +541,7 @@ impl Validator {
         &self,
         kid: &str,
         claims: &Map<String, Value>,
-        whitelisted_issuers: &[&str],
+        whitelisted_issuers: Option<&[&str]>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
         let iss = extract_claim::<String>(claims, "iss")?;
@@ -627,9 +640,11 @@ impl Validator {
         // - The resource server MAY decide if the combination of verified
         //      issuer and effective subject is authorised to make the requested
         //      business operation.
-        if !whitelisted_issuers.contains(&sub.as_ref()) {
-            let subjects = whitelisted_issuers.iter().map(|&x| x.to_owned()).collect();
-            return Err(ValidatorError::UnauthorizedSubject(sub, subjects).into());
+        if let Some(issuers) = whitelisted_issuers {
+            if !issuers.contains(&sub.as_ref()) {
+                let subjects = issuers.iter().map(|&x| x.to_owned()).collect();
+                return Err(ValidatorError::UnauthorizedSubject(sub, subjects).into());
+            }
         }
 
         // Token has been validated and authorised, proceed!
@@ -642,7 +657,7 @@ fn get_key_from_cache(
     key_cache: &mut PublicKeyCache,
     key_cache_duration: Duration,
     kid: &str,
-) -> Result<Bytes> {
+) -> Result<jwt::DecodingKey> {
     if let Some((when, public_key)) = key_cache.get(kid) {
         let time_since = when.elapsed()?;
         if time_since <= key_cache_duration {
