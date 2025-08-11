@@ -111,6 +111,7 @@ extern crate jsonwebtoken_aws_lc as jwt;
 extern crate lru_time_cache;
 extern crate pem;
 extern crate rand;
+#[cfg(feature = "http-keyserver")]
 extern crate reqwest;
 extern crate serde;
 extern crate thiserror;
@@ -122,5 +123,6 @@ extern crate serde_json;
 pub mod claims;
 mod errors;
 pub mod generator;
+pub mod keyserver;
 mod util;
 pub mod validator;
