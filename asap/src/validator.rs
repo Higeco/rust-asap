@@ -69,6 +69,10 @@ pub struct GenericValidatorBuilder<S: Keyserver> {
     resource_server_audience: Option<String>,
     /// The keyserver to fetch the public keys from.
     keyserver: Option<S>,
+    /// The algorithm to use to verify the tokens.
+    ///
+    /// If unset this defaults to RS256.
+    jwt_algorithm: Option<jwt::Algorithm>,
     /// Since validating time fields is always a bit tricky due to clock skew,
     /// this field adds `leeway` to the `iat`, `exp` and `nbf` validation (which
     /// are measured in seconds).
@@ -147,6 +151,7 @@ impl<S: Keyserver> GenericValidatorBuilder<S> {
             resource_server_audience: Some(resource_server_audience),
             keyserver: Some(keyserver),
 
+            jwt_algorithm: None,
             leeway: None,
             max_lifespan: None,
             validate_kid: true,
@@ -199,9 +204,15 @@ impl<S: Keyserver> GenericValidatorBuilder<S> {
         self
     }
 
+    pub fn algorithm(&mut self, algorithm: jwt::Algorithm) -> &mut Self {
+        self.jwt_algorithm = Some(algorithm);
+        self
+    }
+
     /// Builds and returns a `Validator` with the configured options.
     pub fn build(&mut self) -> GenericValidator<S> {
-        let mut jwt_validator = jwt::Validation::new(jwt::Algorithm::RS256);
+        let alg = self.jwt_algorithm.take().unwrap_or(jwt::Algorithm::RS256);
+        let mut jwt_validator = jwt::Validation::new(alg);
         jwt_validator.validate_aud = false;
         jwt_validator.validate_exp = false;
         jwt_validator.validate_nbf = false;

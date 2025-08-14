@@ -110,7 +110,7 @@ use crate::util::convert_pem_to_der;
 /// ```
 pub struct Generator {
     header: jwt::Header,
-    private_key: Vec<u8>,
+    private_key: jwt::EncodingKey,
     claims_builder: Arc<RwLock<ClaimsBuilder>>,
     cache: Arc<RwLock<Option<LruCache<String, String>>>>,
 }
@@ -147,7 +147,17 @@ impl Generator {
     /// openssl rsa -in private_key.der -inform DER -RSAPublicKey_out -outform DER -out public_key.der
     /// ```
     pub fn new(iss: String, kid: String, private_key: Vec<u8>) -> Generator {
-        let mut header = jwt::Header::new(jwt::Algorithm::RS256);
+        let pk = jwt::EncodingKey::from_rsa_der(&private_key);
+        Generator::with_key(iss, kid, jwt::Algorithm::RS256, pk)
+    }
+
+    pub fn with_key(
+        iss: String,
+        kid: String,
+        algorithm: jwt::Algorithm,
+        private_key: jwt::EncodingKey,
+    ) -> Generator {
+        let mut header = jwt::Header::new(algorithm);
         header.kid = Some(kid);
 
         let claims_builder = ClaimsBuilder::new(iss);
@@ -337,13 +347,12 @@ impl Generator {
         Generator::generate_token(&self.header, &claims, &self.private_key)
     }
 
-    fn generate_token(header: &jwt::Header, claims: &Claims, private_key: &[u8]) -> Result<String> {
-        let token = jwt::encode(
-            header,
-            &claims,
-            &jwt::EncodingKey::from_rsa_der(private_key),
-        )
-        .sync()?;
+    fn generate_token(
+        header: &jwt::Header,
+        claims: &Claims,
+        private_key: &jwt::EncodingKey,
+    ) -> Result<String> {
+        let token = jwt::encode(header, &claims, private_key).sync()?;
         Ok(token)
     }
 
