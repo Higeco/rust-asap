@@ -1,4 +1,4 @@
-use rand::distributions::Alphanumeric;
+use rand::distr::Alphanumeric;
 use rand::{self, Rng};
 use serde::de::DeserializeOwned;
 use serde_json::map::Map;
@@ -39,7 +39,7 @@ pub fn convert_pem_to_der(input: &[u8]) -> Result<Vec<u8>> {
 }
 
 pub fn generate_jti() -> String {
-    rand::thread_rng()
+    rand::rng()
         .sample_iter(&Alphanumeric)
         .take(20)
         .map(char::from)
