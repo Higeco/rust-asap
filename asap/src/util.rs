@@ -33,6 +33,7 @@ where
     }
 }
 
+#[cfg(feature = "pem")]
 pub fn convert_pem_to_der(input: &[u8]) -> Result<Vec<u8>> {
     let key = pem::parse(input).map_err(|err| format_err!("failed to parse pem data: {}", err))?;
     Ok(key.contents)
@@ -46,6 +47,7 @@ pub fn generate_jti() -> String {
         .collect::<String>()
 }
 
+#[cfg(feature = "pem")]
 #[test]
 fn key_conversion() {
     let pem = include_bytes!("../support/keys/service01/1530402390-private.pem");

@@ -109,6 +109,7 @@ extern crate jsonwebtoken as jwt;
 #[cfg(feature = "fips")]
 extern crate jsonwebtoken_aws_lc as jwt;
 extern crate lru_time_cache;
+#[cfg(feature = "pem")]
 extern crate pem;
 extern crate rand;
 #[cfg(feature = "http-keyserver")]

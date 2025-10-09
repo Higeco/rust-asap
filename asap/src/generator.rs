@@ -77,6 +77,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use crate::errors::{Result, ResultExt};
+#[cfg(feature = "pem")]
 use crate::util::convert_pem_to_der;
 
 /// An ASAP generator.
@@ -252,6 +253,7 @@ impl Generator {
     ///
     /// let generator = Generator::from_env().unwrap();
     /// ```
+    #[cfg(feature = "pem")]
     pub fn from_env() -> Result<Generator> {
         let get_env_var = |x| {
             env::var(x).map_err(|_| format_err!("Could not find '{:?}' environment variable", x))

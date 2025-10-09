@@ -152,6 +152,7 @@ async fn it_works() {
     validate_claims(token_data, default_aud(), mock_extra_claims());
 }
 
+#[cfg(feature = "pem")]
 #[tokio::test]
 async fn instantiates_from_environment() {
     let keyserver = Keyserver::start();
