@@ -61,7 +61,7 @@ impl Aud {
 }
 
 /// A claims struct that contains the required ASAP fields.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     /// SPEC: A value that identifies the resource server.
     pub aud: Aud,
