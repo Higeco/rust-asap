@@ -9,9 +9,18 @@ pipelines:
             - cargo build
             - cargo test
       - step:
+          name: Build and test (FIPs mode)
+          script:
+            - cargo build --no-default-features --features fips
+            - cargo test --no-default-features --features fips
+      - step:
           name: Run benchmarks
           script:
             - cargo bench
+      - step:
+          name: Run benchmarks (FIPs mode)
+          script:
+            - cargo bench --no-default-features --features fips
       - step:
           name: Check coverage
           script:

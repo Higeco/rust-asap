@@ -104,9 +104,9 @@
 extern crate chrono;
 #[macro_use]
 extern crate anyhow;
-#[cfg(feature = "jsonwebtoken")]
+#[cfg(not(feature = "fips"))]
 extern crate jsonwebtoken as jwt;
-#[cfg(feature = "jsonwebtoken-aws-lc")]
+#[cfg(feature = "fips")]
 extern crate jsonwebtoken_aws_lc as jwt;
 extern crate lru_time_cache;
 extern crate pem;
