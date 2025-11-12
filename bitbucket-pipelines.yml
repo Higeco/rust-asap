@@ -11,6 +11,7 @@ pipelines:
       - step:
           name: Build and test (FIPs mode)
           script:
+            - apt-get update && apt-get install -y cmake && rm -rf /var/lib/apt/lists/*
             - cargo build --no-default-features --features fips
             - cargo test --no-default-features --features fips
       - step:
@@ -20,6 +21,7 @@ pipelines:
       - step:
           name: Run benchmarks (FIPs mode)
           script:
+            - apt-get update && apt-get install -y cmake && rm -rf /var/lib/apt/lists/*
             - cargo bench --no-default-features --features fips
       - step:
           name: Check coverage
