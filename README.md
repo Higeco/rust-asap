@@ -46,16 +46,16 @@ serde = "1"
 serde_json = "1"
 ```
 
-#### Enabling FIPs mode
+#### Enabling FIPS mode
 
-FIPs mode is enabled using the feature `fips`.
+FIPS mode is enabled using the feature `fips`.
 To enable using cargo add:
 
 ```bash
 cargo add asap --no-default-features --features fips
 ```
 
-Note: FIPs mode is achieved by replacing [jsonwebtoken](https://docs.rs/jsonwebtoken/latest/jsonwebtoken/) with [jsonwebtoken-aws-lc](https://docs.rs/jsonwebtoken-aws-lc/latest/jsonwebtoken_aws_lc/). To remove the dependency on `jsonwebtoken` make sure to install the `asap` crate with `--no-default-features`.
+Note: FIPS mode is achieved by replacing [jsonwebtoken](https://docs.rs/jsonwebtoken/latest/jsonwebtoken/) with [jsonwebtoken-aws-lc](https://docs.rs/jsonwebtoken-aws-lc/latest/jsonwebtoken_aws_lc/). To remove the dependency on `jsonwebtoken` make sure to install the `asap` crate with `--no-default-features`.
 
 
 ### Documentation

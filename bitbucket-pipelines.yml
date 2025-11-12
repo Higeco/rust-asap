@@ -9,7 +9,7 @@ pipelines:
             - cargo build
             - cargo test
       - step:
-          name: Build and test (FIPs mode)
+          name: Build and test (FIPS mode)
           script:
             - apt-get update && apt-get install -y cmake golang-go build-essential && rm -rf /var/lib/apt/lists/*
             - cargo build --no-default-features --features fips
