@@ -2,7 +2,10 @@ extern crate asap;
 extern crate asap_deps_keyserver as keyserver;
 extern crate base64;
 extern crate chrono;
+#[cfg(feature = "jsonwebtoken")]
 extern crate jsonwebtoken as jwt;
+#[cfg(feature = "jsonwebtoken-aws-lc")]
+extern crate jsonwebtoken_aws_lc as jwt;
 extern crate reqwest;
 extern crate serde;
 #[macro_use]

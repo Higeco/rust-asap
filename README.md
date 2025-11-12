@@ -46,6 +46,16 @@ serde = "1"
 serde_json = "1"
 ```
 
+#### Enabling FIPs mode
+
+FIPs mode is enabled using the feature `fips`.
+To enable using cargo add:
+
+```bash
+cargo add asap --features fips
+```
+
+
 ### Documentation
 
 And see [the documentation and API](https://docs.rs/asap) which should be straightforward enough for anything you'd need.
@@ -77,6 +87,17 @@ Note that some tests need a keyserver to work. They start up the [mini
 keyserver in the workspace](./asap/support/keyserver) on a random port at the
 beginning of the test. Because each test has its own keyserver, they can
 run in parallel.
+
+### Building with FIPs feature
+
+Requirements:
+- cmake
+
+Build using the `fips` feature flag:
+
+```bash
+cargo build --features fips
+```
 
 ## References
 
