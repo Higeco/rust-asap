@@ -94,6 +94,7 @@ run in parallel.
 
 Requirements:
 - cmake
+- golang
 
 Build using the `fips` feature flag:
 
