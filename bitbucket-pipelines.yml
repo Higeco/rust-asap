@@ -19,11 +19,6 @@ pipelines:
           script:
             - cargo bench
       - step:
-          name: Run benchmarks (FIPs mode)
-          script:
-            - apt-get update && apt-get install -y cmake golang-go build-essential && rm -rf /var/lib/apt/lists/*
-            - cargo bench --no-default-features --features fips
-      - step:
           name: Check coverage
           script:
             - apt-get update && apt-get install -y cmake && rm -rf /var/lib/apt/lists/*
