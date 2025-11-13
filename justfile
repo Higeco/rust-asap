@@ -3,6 +3,7 @@ RBT := "RUST_BACKTRACE=1"
 # Runs the project's tests.
 test: build fmt
 	cargo test
+	cargo test --no-default-features --features fips
 	cargo clippy
 
 # Benchmarks the project.

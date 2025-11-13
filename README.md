@@ -46,6 +46,18 @@ serde = "1"
 serde_json = "1"
 ```
 
+#### Enabling FIPS mode
+
+FIPS mode is enabled using the feature `fips`.
+To enable using cargo add:
+
+```bash
+cargo add asap --no-default-features --features fips
+```
+
+Note: FIPS mode is achieved by replacing [jsonwebtoken](https://docs.rs/jsonwebtoken/latest/jsonwebtoken/) with [jsonwebtoken-aws-lc](https://docs.rs/jsonwebtoken-aws-lc/latest/jsonwebtoken_aws_lc/). To remove the dependency on `jsonwebtoken` make sure to install the `asap` crate with `--no-default-features`.
+
+
 ### Documentation
 
 And see [the documentation and API](https://docs.rs/asap) which should be straightforward enough for anything you'd need.
@@ -77,6 +89,18 @@ Note that some tests need a keyserver to work. They start up the [mini
 keyserver in the workspace](./asap/support/keyserver) on a random port at the
 beginning of the test. Because each test has its own keyserver, they can
 run in parallel.
+
+### Building with FIPs feature
+
+Requirements:
+- cmake
+- golang
+
+Build using the `fips` feature flag:
+
+```bash
+cargo build --features fips
+```
 
 ## References
 
